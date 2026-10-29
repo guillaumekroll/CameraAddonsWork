@@ -11,8 +11,9 @@ const { WebSocketServer } = require('ws');
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const DATA_DIR = path.join(__dirname, 'data');
-const STATE_FILE = path.join(DATA_DIR, 'state.json');
+// Toute la configuration est sauvegardée dans ce fichier JSON (STATE_FILE pour le changer)
+const STATE_FILE = path.resolve(process.env.STATE_FILE || path.join(__dirname, 'data', 'state.json'));
+const BACKUP_FILE = STATE_FILE.replace(/\.json$/, '') + '.backup.json';
 
 const MODES = ['focus', 'help', 'afk', 'open'];
 
@@ -50,9 +51,15 @@ const DEFAULT_STATE = {
     matrixColor: '#00ff66',
     matrixSpeed: 1,
   },
+  deck: { keySize: 96 }, // taille des touches du deck (px)
+  // Listes réutilisables (partagées entre dashboard et deck)
+  library: {
+    quickMessages: [],
+    birthdayNames: [],
+  },
 };
 
-const FX_TRIGGERS = ['cat', 'dog', 'matrix'];
+const FX_TRIGGERS = ['cat', 'dog', 'matrix', 'fireworks', 'birthday'];
 
 // ---------- État ----------
 
@@ -67,6 +74,8 @@ function mergeKnown(target, patch, model) {
     const val = patch[key];
     if (isObject(model[key])) {
       if (isObject(val)) mergeKnown(target[key], val, model[key]);
+    } else if (Array.isArray(model[key])) {
+      if (Array.isArray(val)) target[key] = val;
     } else if (model[key] === null || typeof val === typeof model[key]) {
       target[key] = val;
     }
@@ -74,13 +83,32 @@ function mergeKnown(target, patch, model) {
   return target;
 }
 
+function readStateFile(file) {
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
 function loadState() {
   const state = structuredClone(DEFAULT_STATE);
-  try {
-    mergeKnown(state, JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')), DEFAULT_STATE);
-  } catch {
-    // premier lancement ou fichier illisible : état par défaut
+  let saved = null;
+  if (fs.existsSync(STATE_FILE)) {
+    try {
+      saved = readStateFile(STATE_FILE);
+      // Copie de sécurité de la dernière config valide, à chaque démarrage
+      fs.copyFileSync(STATE_FILE, BACKUP_FILE);
+    } catch (err) {
+      // Fichier abîmé : on le met de côté (jamais écrasé) et on tente la copie de sécurité
+      const broken = STATE_FILE.replace(/\.json$/, '') + `.broken-${Date.now()}.json`;
+      fs.renameSync(STATE_FILE, broken);
+      console.error(`Config illisible (${err.message}), mise de côté : ${broken}`);
+      try {
+        saved = readStateFile(BACKUP_FILE);
+        console.log(`Config restaurée depuis ${BACKUP_FILE}`);
+      } catch {
+        console.error('Aucune copie de sécurité valide : configuration par défaut.');
+      }
+    }
   }
+  if (saved) mergeKnown(state, saved, DEFAULT_STATE);
   // Un timer qui tournait avant l'arrêt du serveur est repris s'il n'a pas expiré
   if (state.timer.running && !(state.timer.endsAt > Date.now())) {
     Object.assign(state.timer, { running: false, endsAt: null, remainingMs: 0 });
@@ -88,17 +116,36 @@ function loadState() {
   return state;
 }
 
-let state = loadState();
+// Écriture atomique : fichier temporaire puis renommage, le JSON n'est jamais à moitié écrit
+function writeStateNow() {
+  clearTimeout(saveTimeout);
+  saveTimeout = null;
+  try {
+    fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+    const tmp = STATE_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
+    fs.renameSync(tmp, STATE_FILE);
+  } catch (err) {
+    console.error('Sauvegarde impossible :', err.message);
+  }
+}
+
 let saveTimeout = null;
+let state = loadState();
+clampNumbers();
+writeStateNow(); // crée le fichier dès le premier lancement (avec les nouvelles clés éventuelles)
 
 function saveState() {
   clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2), (err) => {
-      if (err) console.error('Sauvegarde impossible :', err.message);
-    });
-  }, 300);
+  saveTimeout = setTimeout(writeStateNow, 150);
+}
+
+// Sauvegarde garantie à l'arrêt (Ctrl+C, kill, fermeture du terminal)
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(sig, () => {
+    writeStateNow();
+    process.exit(0);
+  });
 }
 
 function clampNumbers() {
@@ -117,6 +164,12 @@ function clampNumbers() {
   fx.matrixOpacity = Math.min(1, Math.max(0.05, Number(fx.matrixOpacity) || 0.35));
   fx.matrixSpeed = Math.min(3, Math.max(0.2, Number(fx.matrixSpeed) || 1));
   if (!/^#[0-9a-f]{6}$/i.test(fx.matrixColor)) fx.matrixColor = '#00ff66';
+  state.deck.keySize = Math.min(220, Math.max(56, Math.round(Number(state.deck.keySize) || 96)));
+  // listes : chaînes non vides, uniques, longueur et nombre bornés
+  const list = (arr, maxLen, maxItems) =>
+    [...new Set(arr.filter((v) => typeof v === 'string').map((v) => v.trim().slice(0, maxLen)).filter(Boolean))].slice(0, maxItems);
+  state.library.quickMessages = list(state.library.quickMessages, 500, 50);
+  state.library.birthdayNames = list(state.library.birthdayNames, 40, 30);
   if (!['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(s.position)) s.position = 'bottom-left';
   if (!MODES.includes(state.mode)) state.mode = 'focus';
 }
@@ -199,9 +252,10 @@ function broadcastClients() {
 }
 
 // Effet ponctuel : n'altère pas l'état, juste diffusé aux overlays
-function triggerFx(effect) {
+function triggerFx(effect, name) {
   if (!FX_TRIGGERS.includes(effect)) return false;
-  broadcast(JSON.stringify({ type: 'fx', effect }));
+  // name : prénom pour l'anniversaire (optionnel)
+  broadcast(JSON.stringify({ type: 'fx', effect, name: String(name ?? '').trim().slice(0, 40) }));
   return true;
 }
 
@@ -248,7 +302,7 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
-const ROUTES = { '/': 'dashboard.html', '/dashboard': 'dashboard.html', '/overlay': 'overlay.html' };
+const ROUTES = { '/': 'dashboard.html', '/dashboard': 'dashboard.html', '/overlay': 'overlay.html', '/deck': 'deck.html' };
 
 function sendJson(res, code, body) {
   res.writeHead(code, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
@@ -271,12 +325,15 @@ function serveStatic(res, pathname) {
 //   /api/timer/start | pause | toggle | reset
 //   /api/timer/set?min=25     /api/timer/add?min=5  (ou ?sec=30)
 //   /api/message?text=Hello   (text vide = efface)
-//   /api/fx/cat | dog | matrix  (effet ponctuel)
+//   /api/fx/cat | dog | matrix | fireworks  (effet ponctuel)
+//   /api/fx/birthday?name=Alice
+//   /api/config  GET = télécharger la config, POST = importer
 function handleApi(req, res, url) {
   const parts = url.pathname.split('/').filter(Boolean); // ['api', ...]
   if (parts[1] === 'state') return sendJson(res, 200, { serverNow: Date.now(), state });
+  if (parts[1] === 'config') return handleConfig(req, res);
   if (parts[1] === 'fx') {
-    return triggerFx(parts[2]) ? sendJson(res, 200, { ok: true }) : sendJson(res, 400, { error: 'effet inconnu' });
+    return triggerFx(parts[2], url.searchParams.get('name')) ? sendJson(res, 200, { ok: true }) : sendJson(res, 400, { error: 'effet inconnu' });
   }
 
   let cmd = null;
@@ -290,6 +347,37 @@ function handleApi(req, res, url) {
   if (!cmd || !applyCommand(cmd)) return sendJson(res, 400, { error: 'commande invalide' });
   commit();
   sendJson(res, 200, { ok: true, state });
+}
+
+// Export (GET) / import (POST) de toute la configuration
+function handleConfig(req, res) {
+  if (req.method === 'GET') {
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.writeHead(200, {
+      'Content-Type': MIME['.json'],
+      'Content-Disposition': `attachment; filename="overlay-config-${stamp}.json"`,
+    });
+    return res.end(JSON.stringify(state, null, 2));
+  }
+  if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+  let body = '';
+  req.on('data', (chunk) => {
+    body += chunk;
+    if (body.length > 1e6) req.destroy();
+  });
+  req.on('end', () => {
+    let imported;
+    try {
+      imported = JSON.parse(body);
+    } catch {
+      return sendJson(res, 400, { error: 'JSON invalide' });
+    }
+    if (!isObject(imported)) return sendJson(res, 400, { error: 'JSON invalide' });
+    mergeKnown(state, imported, DEFAULT_STATE);
+    commit();
+    writeStateNow();
+    sendJson(res, 200, { ok: true });
+  });
 }
 
 const server = http.createServer((req, res) => {
@@ -321,7 +409,7 @@ wss.on('connection', (ws) => {
       broadcastClients();
       return;
     }
-    if (msg.type === 'fx') return void triggerFx(msg.effect);
+    if (msg.type === 'fx') return void triggerFx(msg.effect, msg.name);
     if (applyCommand(msg)) commit();
   });
 
@@ -343,5 +431,7 @@ setInterval(() => {
 server.listen(PORT, HOST, () => {
   const base = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`;
   console.log(`\n  Dashboard : ${base}/`);
-  console.log(`  Overlay   : ${base}/overlay   (Source Navigateur OBS, 1920x1080)\n`);
+  console.log(`  Overlay   : ${base}/overlay   (Source Navigateur OBS, 1920x1080)`);
+  console.log(`  Deck      : ${base}/deck      (panneau de boutons, tablette / téléphone)`);
+  console.log(`  Config    : ${STATE_FILE}\n`);
 });

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#07080c">
+<title>Overlay Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07080c;
+    --key: #13161f;
+    --key-2: #1a1e2a;
+    --line: #252a38;
+    --text: #eef1f7;
+    --muted: #7d8498;
+    --c-focus: #38e1ff;
+    --c-help: #ffb020;
+    --c-afk: #9aa3d6;
+    --c-open: #3ef0a4;
+    --c-fx: #ff6bd6;
+    --c-timer: #ffd23f;
+    --c-view: #7aa2ff;
+    --c-msg: #c8ff3d;
+    --danger: #ff4d6d;
+    --accent: var(--c-focus);
+    --gap: 12px;
+    --k: 96px; /* taille des touches, réglable depuis le deck */
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.2 Inter, system-ui, sans-serif; }
+  body { min-height: 100vh; padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 24px max(14px, env(safe-area-inset-left)); user-select: none; -webkit-user-select: none; }
+  button, input { font: inherit; color: inherit; }
+
+  .top { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .top h1 { margin: 0; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; }
+  .top h1 b { color: var(--accent); transition: color .3s; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); flex: none; }
+  .dot.on { background: #3ddc97; box-shadow: 0 0 10px #3ddc97; }
+  .top .grow { flex: 1; }
+  .top a { color: var(--muted); text-decoration: none; font-size: 13px; }
+  .size { display: flex; align-items: center; gap: 4px; }
+  .size button { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--key); font-weight: 800; font-size: 16px; cursor: pointer; }
+  .size span { min-width: 46px; text-align: center; color: var(--muted); font: 700 12px "JetBrains Mono", monospace; }
+
+  h2 { margin: 18px 2px 10px; font-size: 11px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--k), 1fr)); gap: calc(var(--k) * .1); }
+
+  .key {
+    --c: var(--accent);
+    position: relative; aspect-ratio: 1; border-radius: calc(var(--k) * .16); border: 1px solid var(--line);
+    background: radial-gradient(120% 90% at 50% 0%, var(--key-2), var(--key));
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--k) * .06);
+    padding: calc(var(--k) * .08); cursor: pointer; text-align: center; overflow: hidden;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 6px 14px rgba(0,0,0,.35);
+    transition: transform .08s, box-shadow .2s, border-color .2s;
+    touch-action: manipulation;
+  }
+  .key::after { content: ""; position: absolute; inset: auto 22% calc(var(--k) * .07); height: 3px; border-radius: 3px; background: var(--c); opacity: .35; transition: opacity .2s, box-shadow .2s; }
+  .key .ico { font-size: calc(var(--k) * .26); line-height: 1; filter: drop-shadow(0 4px 6px rgba(0,0,0,.4)); }
+  .key .lbl { font-weight: 800; font-size: clamp(9px, calc(var(--k) * .11), 16px); letter-spacing: .04em; text-transform: uppercase; line-height: 1.15; }
+  .key .sub { font-size: clamp(8px, calc(var(--k) * .09), 13px); color: var(--muted); margin-top: -4px; }
+  .key:active, .key.pressed { transform: scale(.94); }
+  .key.on { border-color: var(--c); box-shadow: 0 0 0 1px var(--c), 0 0 26px -6px var(--c), inset 0 0 30px -12px var(--c); }
+  .key.on::after { opacity: 1; box-shadow: 0 0 12px var(--c); }
+  .key.on .lbl { color: var(--c); }
+  .key.flash { animation: flash .5s ease-out; }
+  @keyframes flash { from { box-shadow: 0 0 0 2px var(--c), 0 0 40px var(--c); } }
+
+  .key.timer { grid-column: span 2; aspect-ratio: auto; }
+  .key.timer .clock { font: 700 calc(var(--k) * .44)/1 "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .key.timer.paused .clock { color: var(--muted); }
+  .key.timer.done .clock { color: var(--danger); animation: blink 1s steps(2) infinite; }
+  .key.timer .bar { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--c); transition: width .25s linear; }
+  .key.timer::after { display: none; }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  .key.msg .lbl { text-transform: none; font-weight: 700; font-size: clamp(9px, calc(var(--k) * .1), 14px); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .empty { color: var(--muted); font-size: 13px; padding: 4px 2px; }
+
+  /* Feuille anniversaire */
+  .sheet { position: fixed; inset: 0; z-index: 20; display: none; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.6); backdrop-filter: blur(6px); }
+  .sheet.open { display: flex; }
+  .sheet .card { width: min(560px, 100%); margin: 0 auto; background: #11141c; border: 1px solid var(--line); border-radius: 22px 22px 0 0; padding: 22px 20px max(22px, env(safe-area-inset-bottom)); animation: up .25s ease-out; }
+  @media (min-width: 700px) { .sheet { align-items: center; } .sheet .card { border-radius: 22px; } }
+  @keyframes up { from { transform: translateY(40px); opacity: 0; } }
+  .card h3 { margin: 0 0 14px; font-size: 18px; }
+  .card input { width: 100%; padding: 16px; font-size: 20px; border-radius: 14px; border: 1px solid var(--line); background: #0a0c12; outline: none; }
+  .card input:focus { border-color: var(--c-fx); }
+  .card .names { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+  .card .names button { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--key); cursor: pointer; }
+  .card .actions { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top: 16px; }
+  .card .actions button { padding: 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--key-2); font-weight: 800; font-size: 16px; cursor: pointer; }
+  .card .actions .go { background: linear-gradient(90deg, #ff4d6d, #ffb020); border: 0; color: #160a05; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="dot" id="dot"></div>
+  <h1>Overlay <b>Deck</b></h1>
+  <div class="grow"></div>
+  <div class="size" title="Taille des touches"><button id="sizeDown" aria-label="Touches plus petites">−</button><span id="sizeVal">96</span><button id="sizeUp" aria-label="Touches plus grandes">+</button></div>
+  <a href="/">Dashboard →</a>
+</div>
+
+<h2>Mode</h2>
+<div class="grid">
+  <button class="key" data-mode="focus" style="--c: var(--c-focus)"><span class="ico">🎯</span><span class="lbl" data-mode-label="focus">Focus time</span></button>
+  <button class="key" data-mode="help" style="--c: var(--c-help)"><span class="ico">🤝</span><span class="lbl" data-mode-label="help">Help the crew</span></button>
+  <button class="key" data-mode="afk" style="--c: var(--c-afk)"><span class="ico">🌙</span><span class="lbl" data-mode-label="afk">AFK</span></button>
+  <button class="key" data-mode="open" style="--c: var(--c-open)"><span class="ico">💬</span><span class="lbl" data-mode-label="open">Open to discuss</span></button>
+</div>
+
+<h2>Timer</h2>
+<div class="grid">
+  <button class="key timer" id="timerKey" style="--c: var(--c-timer)" data-timer="toggle"><span class="clock" id="clock">--:--</span><span class="sub" id="timerSub">Toucher pour démarrer</span><span class="bar" id="bar"></span></button>
+  <button class="key" data-timer="reset" style="--c: var(--danger)"><span class="ico">↺</span><span class="lbl">Reset</span></button>
+  <button class="key" data-timer="add" data-ms="60000" style="--c: var(--c-timer)"><span class="ico">⏩</span><span class="lbl">+1 min</span></button>
+  <button class="key" data-timer="add" data-ms="300000" style="--c: var(--c-timer)"><span class="ico">⏭️</span><span class="lbl">+5 min</span></button>
+  <button class="key" data-timer="add" data-ms="-60000" style="--c: var(--c-timer)"><span class="ico">⏪</span><span class="lbl">−1 min</span></button>
+  <button class="key" data-timer="set" data-ms="900000" style="--c: var(--c-timer)"><span class="ico">⏱️</span><span class="lbl">15 min</span></button>
+  <button class="key" data-timer="set" data-ms="1500000" style="--c: var(--c-timer)"><span class="ico">🍅</span><span class="lbl">25 min</span></button>
+  <button class="key" data-timer="set" data-ms="2700000" style="--c: var(--c-timer)"><span class="ico">⏱️</span><span class="lbl">45 min</span></button>
+  <button class="key" data-timer="set" data-ms="3600000" style="--c: var(--c-timer)"><span class="ico">⏱️</span><span class="lbl">60 min</span></button>
+</div>
+
+<h2>Effets</h2>
+<div class="grid">
+  <button class="key" id="birthdayKey" style="--c: var(--c-fx)"><span class="ico">🎂</span><span class="lbl">Anniversaire</span></button>
+  <button class="key" data-fx="fireworks" style="--c: var(--c-fx)"><span class="ico">🎆</span><span class="lbl">Feu d'artifice</span></button>
+  <button class="key" data-fx="cat" style="--c: var(--c-fx)"><span class="ico">🐱</span><span class="lbl">Chaton</span></button>
+  <button class="key" data-fx="dog" style="--c: var(--c-fx)"><span class="ico">🐶</span><span class="lbl">Chien</span></button>
+  <button class="key" data-fx="matrix" style="--c: var(--c-open)"><span class="ico">🟩</span><span class="lbl">Rafale Matrix</span></button>
+  <button class="key" data-toggle="fx.cats" style="--c: var(--c-fx)"><span class="ico">🐈</span><span class="lbl">Chatons auto</span><span class="sub" data-state-of="fx.cats"></span></button>
+  <button class="key" data-toggle="fx.dogs" style="--c: var(--c-fx)"><span class="ico">🐕</span><span class="lbl">Chiens auto</span><span class="sub" data-state-of="fx.dogs"></span></button>
+  <button class="key" data-toggle="fx.matrix" style="--c: var(--c-open)"><span class="ico">💾</span><span class="lbl">Matrix continu</span><span class="sub" data-state-of="fx.matrix"></span></button>
+</div>
+
+<h2>Affichage</h2>
+<div class="grid">
+  <button class="key" data-toggle="visibility.panel" style="--c: var(--c-view)"><span class="ico">🖥️</span><span class="lbl">Overlay</span><span class="sub" data-state-of="visibility.panel"></span></button>
+  <button class="key" data-toggle="visibility.mode" style="--c: var(--c-view)"><span class="ico">🏷️</span><span class="lbl">Badge mode</span><span class="sub" data-state-of="visibility.mode"></span></button>
+  <button class="key" data-toggle="visibility.timer" style="--c: var(--c-view)"><span class="ico">⏲️</span><span class="lbl">Timer</span><span class="sub" data-state-of="visibility.timer"></span></button>
+  <button class="key" data-toggle="visibility.message" style="--c: var(--c-view)"><span class="ico">📝</span><span class="lbl">Message</span><span class="sub" data-state-of="visibility.message"></span></button>
+  <button class="key" id="clearMsg" style="--c: var(--danger)"><span class="ico">🧹</span><span class="lbl">Effacer message</span></button>
+</div>
+
+<h2>Messages enregistrés</h2>
+<div class="grid" id="quick"></div>
+
+<div class="sheet" id="sheet">
+  <div class="card">
+    <h3>🎂 Souhaiter un anniversaire</h3>
+    <input id="bdName" type="text" placeholder="Prénom / pseudo (optionnel)" maxlength="40" autocomplete="off">
+    <div class="names" id="bdNames"></div>
+    <div class="actions">
+      <button id="bdCancel">Annuler</button>
+      <button class="go" id="bdGo">🎉 Lancer la fête</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => [...document.querySelectorAll(s)];
+
+  let state = null, offset = 0, ws = null, retry = 1000;
+
+
+  // ---------- WebSocket ----------
+  function connect() {
+    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+    ws.onopen = () => { retry = 1000; $('#dot').classList.add('on'); ws.send(JSON.stringify({ type: 'hello', role: 'deck' })); };
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type !== 'state') return;
+      offset = msg.serverNow - Date.now();
+      state = msg.state;
+      render();
+      renderQuick();
+    };
+    ws.onclose = () => { $('#dot').classList.remove('on'); setTimeout(connect, retry); retry = Math.min(retry * 1.6, 5000); };
+    ws.onerror = () => ws.close();
+  }
+  function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
+  function patch(path, value) {
+    const obj = {}, keys = path.split('.');
+    keys.reduce((o, k, i) => (o[k] = i === keys.length - 1 ? value : {}), obj);
+    send({ type: 'patch', patch: obj });
+  }
+  const get = (path) => path.split('.').reduce((o, k) => (o == null ? o : o[k]), state);
+
+  // ---------- Rendu ----------
+  function render() {
+    if (!state) return;
+    document.documentElement.style.setProperty('--accent', state.modes[state.mode]?.accent || `var(--c-${state.mode})`);
+    for (const k of $$('[data-mode]')) {
+      const m = k.dataset.mode;
+      k.classList.toggle('on', m === state.mode);
+      if (state.modes[m]?.accent) k.style.setProperty('--c', state.modes[m].accent);
+      const lbl = k.querySelector('[data-mode-label]');
+      if (state.modes[m]?.label) lbl.textContent = state.modes[m].label;
+    }
+    document.documentElement.style.setProperty('--k', state.deck.keySize + 'px');
+    $('#sizeVal').textContent = state.deck.keySize + 'px';
+    for (const k of $$('[data-toggle]')) k.classList.toggle('on', !!get(k.dataset.toggle));
+    for (const s of $$('[data-state-of]')) s.textContent = get(s.dataset.stateOf) ? 'ON' : 'OFF';
+    $('#timerKey').classList.toggle('on', state.timer.running);
+    tick();
+  }
+
+  function remaining() {
+    const t = state.timer;
+    return t.running ? Math.max(0, t.endsAt - (Date.now() + offset)) : Math.max(0, t.remainingMs);
+  }
+  function fmt(ms) {
+    const s = Math.ceil(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), p = (n) => String(n).padStart(2, '0');
+    return h ? `${h}:${p(m)}:${p(s % 60)}` : `${p(m)}:${p(s % 60)}`;
+  }
+  function tick() {
+    if (!state) return;
+    const r = remaining(), t = state.timer, key = $('#timerKey');
+    $('#clock').textContent = fmt(r);
+    key.classList.toggle('paused', !t.running && r > 0);
+    key.classList.toggle('done', r <= 0);
+    $('#timerSub').textContent = r <= 0 ? 'Terminé · Reset' : t.running ? 'En cours · toucher pour pause' : 'En pause · toucher pour démarrer';
+    $('#bar').style.width = (t.durationMs ? (r / t.durationMs) * 100 : 0) + '%';
+  }
+  setInterval(tick, 250);
+
+  // ---------- Touches ----------
+  function feedback(el) {
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    if (navigator.vibrate) navigator.vibrate(12);
+  }
+  document.addEventListener('click', (e) => {
+    const k = e.target.closest('.key');
+    if (!k) return;
+    feedback(k);
+    if (k.dataset.mode) send({ type: 'mode', mode: k.dataset.mode });
+    else if (k.dataset.timer) send({ type: 'timer', action: k.dataset.timer, ms: Number(k.dataset.ms) || 0 });
+    else if (k.dataset.fx) send({ type: 'fx', effect: k.dataset.fx });
+    else if (k.dataset.toggle) patch(k.dataset.toggle, !get(k.dataset.toggle));
+    else if (k.dataset.quick != null) {
+      send({ type: 'message', text: k.dataset.quick });
+      if (state && !state.visibility.message) patch('visibility.message', true);
+    }
+  });
+  const resize = (d) => state && patch('deck.keySize', state.deck.keySize + d);
+  $('#sizeDown').onclick = () => resize(-8);
+  $('#sizeUp').onclick = () => resize(8);
+  $('#clearMsg').addEventListener('click', () => send({ type: 'message', text: '' }));
+
+  // Messages enregistrés depuis le dashboard
+  let quickSig = null;
+  function renderQuick() {
+    const list = (state && state.library.quickMessages) || [];
+    const sig = JSON.stringify(list);
+    if (sig === quickSig) return;
+    quickSig = sig;
+    const box = $('#quick');
+    box.innerHTML = '';
+    if (!list.length) {
+      box.innerHTML = '<div class="empty">Enregistre des messages depuis le dashboard (☆ Enregistrer) pour les retrouver ici.</div>';
+      return;
+    }
+    for (const text of list) {
+      const b = document.createElement('button');
+      b.className = 'key msg';
+      b.style.setProperty('--c', 'var(--c-msg)');
+      b.dataset.quick = text;
+      b.innerHTML = '<span class="ico">💬</span><span class="lbl"></span>';
+      b.querySelector('.lbl').textContent = text;
+      box.appendChild(b);
+    }
+  }
+
+  // ---------- Anniversaire ----------
+  const sheet = $('#sheet'), nameInput = $('#bdName');
+  function renderNames() {
+    const box = $('#bdNames');
+    box.innerHTML = '';
+    for (const n of (state && state.library.birthdayNames) || []) {
+      const b = document.createElement('button');
+      b.textContent = n;
+      b.onclick = () => { nameInput.value = n; };
+      box.appendChild(b);
+    }
+  }
+  $('#birthdayKey').addEventListener('click', () => {
+    renderNames();
+    sheet.classList.add('open');
+    setTimeout(() => nameInput.focus(), 50);
+  });
+  const closeSheet = () => sheet.classList.remove('open');
+  $('#bdCancel').onclick = closeSheet;
+  sheet.addEventListener('click', (e) => e.target === sheet && closeSheet());
+  function go() {
+    const name = nameInput.value.trim();
+    send({ type: 'fx', effect: 'birthday', name });
+    if (name) patch('library.birthdayNames', [name, ...state.library.birthdayNames.filter((n) => n !== name)].slice(0, 30));
+    nameInput.value = '';
+    nameInput.blur();
+    closeSheet();
+  }
+  $('#bdGo').onclick = go;
+  nameInput.addEventListener('keydown', (e) => e.key === 'Enter' && go());
+
+  // Garde l'écran de la tablette allumé
+  async function keepAwake() {
+    try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch {}
+  }
+  keepAwake();
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && keepAwake());
+
+  connect();
+})();
+</script>
+</body>
+</html>

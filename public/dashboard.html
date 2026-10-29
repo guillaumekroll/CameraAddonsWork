@@ -36,6 +36,7 @@
     border-bottom: 1px solid var(--line);
   }
   header h1 { font-size: 15px; margin: 0; letter-spacing: .08em; text-transform: uppercase; }
+  header a.btn { text-decoration: none; }
   header h1 span { color: var(--accent); transition: color .3s; }
   .status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 3px rgba(255,77,109,.15); }
@@ -145,6 +146,7 @@
   .preview iframe { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; pointer-events: none; }
 
   .fx-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+  a.btn { text-decoration: none; }
   .hint { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
   kbd { font: 11px "JetBrains Mono", monospace; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel-2); }
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0; padding: 10px 16px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); transition: .25s; pointer-events: none; }
@@ -158,6 +160,7 @@
   <div class="status"><div class="dot" id="wsDot"></div><span id="wsText">Déconnecté</span></div>
   <div class="status" id="overlayCount">0 overlay connecté</div>
   <div class="spacer"></div>
+  <a class="btn sm" href="/deck" target="_blank" rel="noopener">🎛️ Deck</a>
   <div class="url"><code id="overlayUrl"></code><button class="btn sm" id="copyUrl">Copier l'URL OBS</button></div>
 </header>
 
@@ -209,7 +212,7 @@
           <input type="text" id="timerLabel" data-path="timer.label" placeholder="Session">
         </label>
       </div>
-      <p class="hint"><kbd>Espace</kbd> démarrer / pause · <kbd>R</kbd> reset · <kbd>1</kbd>–<kbd>4</kbd> changer de mode · <kbd>C</kbd> chaton · <kbd>D</kbd> chien · <kbd>M</kbd> Matrix</p>
+      <p class="hint"><kbd>Espace</kbd> démarrer / pause · <kbd>R</kbd> reset · <kbd>1</kbd>–<kbd>4</kbd> changer de mode · <kbd>C</kbd> chaton · <kbd>D</kbd> chien · <kbd>M</kbd> Matrix · <kbd>F</kbd> feu d'artifice</p>
     </section>
 
     <!-- MESSAGE -->
@@ -230,6 +233,11 @@
     <!-- EFFETS -->
     <section>
       <h2>Effets</h2>
+      <div class="row" style="flex-wrap:nowrap; margin-bottom:14px">
+        <input type="text" id="bdName" placeholder="Prénom pour l'anniversaire (optionnel)" maxlength="40">
+        <button class="btn primary" id="bdGo">🎂 Anniversaire</button>
+        <button class="btn" data-fx="fireworks">🎆 Feu d'artifice</button>
+      </div>
       <div class="fx-row">
         <label class="switch"><input type="checkbox" data-path="fx.cats"><i></i>🐱 Chatons au hasard</label>
         <button class="btn sm" data-fx="cat">Lancer un chaton</button>
@@ -333,6 +341,16 @@
         <label class="switch" style="margin-top:22px"><input type="checkbox" data-path="style.uppercase"><i></i>MAJUSCULES</label>
       </div>
       <datalist id="fontList"></datalist>
+    </section>
+
+    <section>
+      <h2>Sauvegarde</h2>
+      <p class="hint" style="margin-top:0">Tous les réglages sont enregistrés automatiquement dans <code id="cfgPath">data/state.json</code> (copie de sécurité : <code>state.backup.json</code>).</p>
+      <div class="row" style="margin-top:10px">
+        <a class="btn" href="/api/config" download>⬇ Exporter la config</a>
+        <button class="btn" id="importBtn">⬆ Importer une config</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
     </section>
 
     <section>
@@ -445,6 +463,8 @@
 
     if (document.activeElement !== $('#msgInput') && !$('#msgInput').dataset.dirty) $('#msgInput').value = state.message.text;
     $('#timerToggle').textContent = state.timer.running ? '❚❚ Pause' : '▶ Démarrer';
+    renderQuick();
+    migrateLocal();
     tick();
   }
 
@@ -543,6 +563,24 @@
   $('#pos').addEventListener('click', (e) => e.target.dataset.pos && patch('style.position', e.target.dataset.pos));
   $$('[data-auto]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); patch(b.dataset.auto, 0); }));
   $$('[data-fx]').forEach((b) => b.addEventListener('click', () => send({ type: 'fx', effect: b.dataset.fx })));
+  function birthday() {
+    send({ type: 'fx', effect: 'birthday', name: $('#bdName').value.trim() });
+    $('#bdName').value = '';
+  }
+  $('#bdGo').onclick = birthday;
+  $('#bdName').addEventListener('keydown', (e) => e.key === 'Enter' && birthday());
+  $('#importBtn').onclick = () => $('#importFile').click();
+  $('#importFile').onchange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const res = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() });
+      toast(res.ok ? 'Config importée' : 'Fichier invalide');
+    } catch {
+      toast('Import impossible');
+    }
+  };
   $('#mxClassic').onclick = () => patch('fx.matrixColor', '#00ff66');
   $('#mxMode').onclick = () => {
     const c = state.modes[state.mode].accent || getComputedStyle(document.documentElement).getPropertyValue('--c-' + state.mode).trim();
@@ -564,16 +602,15 @@
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendMsg(msgInput.value); }
   });
 
-  // Messages enregistrés (local au navigateur)
-  function loadQuick() {
-    try { return JSON.parse(localStorage.getItem(QUICK_KEY)) || []; } catch { return []; }
-  }
-  function saveQuick(list) {
-    try { localStorage.setItem(QUICK_KEY, JSON.stringify(list)); } catch {}
-    renderQuick();
-  }
+  // Messages enregistrés (sauvegardés dans le fichier de config du serveur)
+  const loadQuick = () => (state && state.library.quickMessages) || [];
+  const saveQuick = (list) => patch('library.quickMessages', list);
+  let quickSig = null;
   function renderQuick() {
     const list = loadQuick();
+    const sig = JSON.stringify(list);
+    if (sig === quickSig) return;
+    quickSig = sig;
     $('#quickList').innerHTML = '';
     list.forEach((text, i) => {
       const q = document.createElement('span');
@@ -592,10 +629,23 @@
     const text = msgInput.value.trim();
     if (!text) return;
     const list = loadQuick().filter((t) => t !== text);
-    saveQuick([text, ...list].slice(0, 20));
+    saveQuick([text, ...list].slice(0, 50));
     toast('Message enregistré');
   };
-  renderQuick();
+
+  // Reprise des anciens messages stockés dans le navigateur (avant la sauvegarde serveur)
+  let migrated = false;
+  function migrateLocal() {
+    if (migrated) return;
+    migrated = true;
+    try {
+      const old = JSON.parse(localStorage.getItem(QUICK_KEY)) || [];
+      if (!old.length) return;
+      saveQuick([...new Set([...loadQuick(), ...old])]);
+      localStorage.removeItem(QUICK_KEY);
+      toast(`${old.length} message(s) repris dans la config`);
+    } catch {}
+  }
 
   // Raccourcis clavier (hors champs de saisie)
   document.addEventListener('keydown', (e) => {
@@ -605,6 +655,7 @@
     else if (e.key === 'c' || e.key === 'C') send({ type: 'fx', effect: 'cat' });
     else if (e.key === 'd' || e.key === 'D') send({ type: 'fx', effect: 'dog' });
     else if (e.key === 'm' || e.key === 'M') send({ type: 'fx', effect: 'matrix' });
+    else if (e.key === 'f' || e.key === 'F') send({ type: 'fx', effect: 'fireworks' });
     else if (['1', '2', '3', '4'].includes(e.key)) send({ type: 'mode', mode: MODE_KEYS[e.key - 1] });
   });
 
