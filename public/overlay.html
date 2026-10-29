@@ -516,7 +516,7 @@ body.preview {
   const root = document.documentElement;
 
   const params = new URLSearchParams(location.search);
-  const ONLY = ['timer', 'mode', 'message'].includes(params.get('only')) ? params.get('only') : null;
+  const ONLY = ['timer', 'mode', 'message', 'fx'].includes(params.get('only')) ? params.get('only') : null;
   if (params.get('preview') === '1') document.body.classList.add('preview');
 
   /* ---------------- fonts ---------------- */
@@ -782,6 +782,8 @@ body.preview {
     sock.onmessage = ev => {
       let d;
       try { d = JSON.parse(ev.data); } catch (e) { return; }
+      if (d && d.type === 'state') window.__overlayLastState = d; // pour effects.js s'il charge après
+      if (d) window.dispatchEvent(new CustomEvent('overlay:msg', { detail: d })); // effets (effects.js)
       if (!d || d.type !== 'state') return;
       try {
         if (typeof d.serverNow === 'number' && isFinite(d.serverNow)) offset = d.serverNow - Date.now();
@@ -802,5 +804,6 @@ body.preview {
   connect();
 })();
 </script>
+<script src="/effects.js"></script>
 </body>
 </html>

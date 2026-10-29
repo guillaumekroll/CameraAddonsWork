@@ -144,6 +144,7 @@
   .preview { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #000; }
   .preview iframe { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; pointer-events: none; }
 
+  .fx-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
   .hint { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
   kbd { font: 11px "JetBrains Mono", monospace; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel-2); }
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0; padding: 10px 16px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); transition: .25s; pointer-events: none; }
@@ -208,7 +209,7 @@
           <input type="text" id="timerLabel" data-path="timer.label" placeholder="Session">
         </label>
       </div>
-      <p class="hint"><kbd>Espace</kbd> démarrer / pause · <kbd>R</kbd> reset · <kbd>1</kbd>–<kbd>4</kbd> changer de mode</p>
+      <p class="hint"><kbd>Espace</kbd> démarrer / pause · <kbd>R</kbd> reset · <kbd>1</kbd>–<kbd>4</kbd> changer de mode · <kbd>C</kbd> chaton · <kbd>D</kbd> chien · <kbd>M</kbd> Matrix</p>
     </section>
 
     <!-- MESSAGE -->
@@ -224,6 +225,48 @@
         <span class="hint" style="margin:0"><kbd>Ctrl</kbd>+<kbd>Entrée</kbd> pour afficher</span>
       </div>
       <div class="quick" id="quickList"></div>
+    </section>
+
+    <!-- EFFETS -->
+    <section>
+      <h2>Effets</h2>
+      <div class="fx-row">
+        <label class="switch"><input type="checkbox" data-path="fx.cats"><i></i>🐱 Chatons au hasard</label>
+        <button class="btn sm" data-fx="cat">Lancer un chaton</button>
+      </div>
+      <div class="fx-row">
+        <label class="switch"><input type="checkbox" data-path="fx.dogs"><i></i>🐶 Chiens au hasard</label>
+        <button class="btn sm" data-fx="dog">Lancer un chien</button>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <label class="f">Apparition toutes les … secondes (min – max)
+          <div class="row" style="flex-wrap:nowrap">
+            <input type="number" min="3" max="3600" data-path="fx.petMinSec" data-type="number" data-commit="change">
+            <span>–</span>
+            <input type="number" min="3" max="3600" data-path="fx.petMaxSec" data-type="number" data-commit="change">
+          </div>
+        </label>
+        <label class="f">Taille des animaux : <b id="petSizeVal">180 px</b>
+          <input type="range" min="60" max="400" step="10" data-path="fx.petSize" data-type="number">
+        </label>
+      </div>
+
+      <div class="fx-row" style="margin-top:18px; padding-top:16px; border-top:1px solid var(--line)">
+        <label class="switch"><input type="checkbox" data-path="fx.matrix"><i></i>🟩 Pluie Matrix en continu</label>
+        <button class="btn sm" data-fx="matrix">Rafale Matrix (9 s)</button>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <label class="f">Opacité : <b id="mxOpVal">35 %</b>
+          <input type="range" min="0.05" max="1" step="0.05" data-path="fx.matrixOpacity" data-type="number">
+        </label>
+        <label class="f">Vitesse : <b id="mxSpVal">1.0×</b>
+          <input type="range" min="0.2" max="3" step="0.1" data-path="fx.matrixSpeed" data-type="number">
+        </label>
+        <label class="f">Couleur
+          <div class="color"><input type="color" data-path="fx.matrixColor"><button class="btn sm" id="mxClassic">Vert classique</button><button class="btn sm" id="mxMode">Couleur du mode</button></div>
+        </label>
+      </div>
+      <p class="hint">La pluie Matrix passe derrière le panneau, les animaux devant. Source OBS dédiée aux effets : <code>/overlay?only=fx</code></p>
     </section>
   </div>
 
@@ -392,6 +435,9 @@
 
     $('#scaleVal').textContent = Number(state.style.scale).toFixed(2) + '×';
     $('#msgSizeVal').textContent = state.style.messageSize + ' px';
+    $('#petSizeVal').textContent = state.fx.petSize + ' px';
+    $('#mxOpVal').textContent = Math.round(state.fx.matrixOpacity * 100) + ' %';
+    $('#mxSpVal').textContent = Number(state.fx.matrixSpeed).toFixed(1) + '×';
     $('#pwVal').textContent = state.style.panelWidth ? state.style.panelWidth + ' px' : 'Auto';
     $('#phVal').textContent = state.style.panelHeight ? state.style.panelHeight + ' px' : 'Auto';
     $$('[data-auto]').forEach((b) => b.classList.toggle('primary', !get(b.dataset.auto)));
@@ -496,6 +542,12 @@
 
   $('#pos').addEventListener('click', (e) => e.target.dataset.pos && patch('style.position', e.target.dataset.pos));
   $$('[data-auto]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); patch(b.dataset.auto, 0); }));
+  $$('[data-fx]').forEach((b) => b.addEventListener('click', () => send({ type: 'fx', effect: b.dataset.fx })));
+  $('#mxClassic').onclick = () => patch('fx.matrixColor', '#00ff66');
+  $('#mxMode').onclick = () => {
+    const c = state.modes[state.mode].accent || getComputedStyle(document.documentElement).getPropertyValue('--c-' + state.mode).trim();
+    patch('fx.matrixColor', c);
+  };
   $('#resetStyle').onclick = () => send({ type: 'reset-style' });
 
   // Message
@@ -550,6 +602,9 @@
     if (e.target.closest('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.code === 'Space') { e.preventDefault(); send({ type: 'timer', action: 'toggle' }); }
     else if (e.key === 'r' || e.key === 'R') send({ type: 'timer', action: 'reset' });
+    else if (e.key === 'c' || e.key === 'C') send({ type: 'fx', effect: 'cat' });
+    else if (e.key === 'd' || e.key === 'D') send({ type: 'fx', effect: 'dog' });
+    else if (e.key === 'm' || e.key === 'M') send({ type: 'fx', effect: 'matrix' });
     else if (['1', '2', '3', '4'].includes(e.key)) send({ type: 'mode', mode: MODE_KEYS[e.key - 1] });
   });
 

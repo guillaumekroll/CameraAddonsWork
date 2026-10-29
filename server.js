@@ -39,7 +39,20 @@ const DEFAULT_STATE = {
     panelHeight: 0, // px, 0 = automatique
   },
   visibility: { panel: true, mode: true, timer: true, message: true },
+  fx: {
+    cats: false, // chatons qui apparaissent au hasard
+    dogs: false, // chiens qui apparaissent au hasard
+    petMinSec: 30, // intervalle aléatoire entre deux apparitions
+    petMaxSec: 90,
+    petSize: 180, // px
+    matrix: false, // pluie Matrix en continu (derrière le panneau)
+    matrixOpacity: 0.35,
+    matrixColor: '#00ff66',
+    matrixSpeed: 1,
+  },
 };
+
+const FX_TRIGGERS = ['cat', 'dog', 'matrix'];
 
 // ---------- État ----------
 
@@ -97,6 +110,13 @@ function clampNumbers() {
   const dim = (v, min, max) => (Number(v) > 0 ? Math.min(max, Math.max(min, Math.round(Number(v)))) : 0);
   s.panelWidth = dim(s.panelWidth, 280, 1800);
   s.panelHeight = dim(s.panelHeight, 100, 1000);
+  const fx = state.fx;
+  fx.petMinSec = Math.min(3600, Math.max(3, Math.round(Number(fx.petMinSec) || 30)));
+  fx.petMaxSec = Math.min(3600, Math.max(fx.petMinSec, Math.round(Number(fx.petMaxSec) || 90)));
+  fx.petSize = Math.min(600, Math.max(60, Math.round(Number(fx.petSize) || 180)));
+  fx.matrixOpacity = Math.min(1, Math.max(0.05, Number(fx.matrixOpacity) || 0.35));
+  fx.matrixSpeed = Math.min(3, Math.max(0.2, Number(fx.matrixSpeed) || 1));
+  if (!/^#[0-9a-f]{6}$/i.test(fx.matrixColor)) fx.matrixColor = '#00ff66';
   if (!['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(s.position)) s.position = 'bottom-left';
   if (!MODES.includes(state.mode)) state.mode = 'focus';
 }
@@ -178,6 +198,13 @@ function broadcastClients() {
   broadcast(JSON.stringify({ type: 'clients', ...counts }));
 }
 
+// Effet ponctuel : n'altère pas l'état, juste diffusé aux overlays
+function triggerFx(effect) {
+  if (!FX_TRIGGERS.includes(effect)) return false;
+  broadcast(JSON.stringify({ type: 'fx', effect }));
+  return true;
+}
+
 function commit() {
   clampNumbers();
   saveState();
@@ -217,6 +244,7 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.webp': 'image/webp',
   '.woff2': 'font/woff2',
 };
 
@@ -243,9 +271,13 @@ function serveStatic(res, pathname) {
 //   /api/timer/start | pause | toggle | reset
 //   /api/timer/set?min=25     /api/timer/add?min=5  (ou ?sec=30)
 //   /api/message?text=Hello   (text vide = efface)
+//   /api/fx/cat | dog | matrix  (effet ponctuel)
 function handleApi(req, res, url) {
   const parts = url.pathname.split('/').filter(Boolean); // ['api', ...]
   if (parts[1] === 'state') return sendJson(res, 200, { serverNow: Date.now(), state });
+  if (parts[1] === 'fx') {
+    return triggerFx(parts[2]) ? sendJson(res, 200, { ok: true }) : sendJson(res, 400, { error: 'effet inconnu' });
+  }
 
   let cmd = null;
   if (parts[1] === 'mode') cmd = { type: 'mode', mode: parts[2] };
@@ -289,6 +321,7 @@ wss.on('connection', (ws) => {
       broadcastClients();
       return;
     }
+    if (msg.type === 'fx') return void triggerFx(msg.effect);
     if (applyCommand(msg)) commit();
   });
 
