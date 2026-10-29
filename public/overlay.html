@@ -407,6 +407,42 @@ body.preview {
 @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-1.8px); } }
 @keyframes zRise { 0% { opacity: 0; transform: translate(0,0); } 20% { opacity: 1; } 70% { opacity: 0; transform: translate(4px,-9px); } 100% { opacity: 0; } }
 
+/* ---------- voile flou + teinte lumineuse (calques du fond, sous tout le reste) ---------- */
+.veil, .tint { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1s ease; overflow: hidden; }
+.veil.on { opacity: var(--veil-op, .8); }
+.veil {
+  background:
+    radial-gradient(120% 90% at 50% 40%, color-mix(in oklab, var(--deep) calc(var(--veil-tint, .5) * 100%), #0b0c12) 0%, #06070b 100%);
+}
+.veil-blobs { position: absolute; inset: -10%; filter: blur(110px); opacity: calc(.25 + var(--veil-tint, .5) * .6); }
+.veil-blobs i { position: absolute; border-radius: 50%; width: 900px; height: 900px; }
+.veil-blobs i:nth-child(1) { left: 5%;  top: 10%; background: var(--accent); }
+.veil-blobs i:nth-child(2) { right: 5%; bottom: 0; background: var(--accent-2); width: 1100px; height: 1100px; }
+.veil-blobs i:nth-child(3) { left: 40%; top: 45%; background: color-mix(in oklab, var(--accent) 50%, var(--accent-2)); width: 700px; height: 700px; opacity: .7; }
+.veil.motion .veil-blobs i:nth-child(1) { animation: drift1 26s ease-in-out infinite; }
+.veil.motion .veil-blobs i:nth-child(2) { animation: drift2 32s ease-in-out infinite; }
+.veil.motion .veil-blobs i:nth-child(3) { animation: drift3 22s ease-in-out infinite; }
+.veil .fx-grain { opacity: .22; }
+.veil.no-grain .fx-grain { display: none; }
+@keyframes drift1 { 50% { transform: translate(380px, 160px) scale(1.15); } }
+@keyframes drift2 { 50% { transform: translate(-420px, -140px) scale(.9); } }
+@keyframes drift3 { 50% { transform: translate(-260px, -220px) scale(1.25); } }
+
+.tint.on { opacity: var(--tint-op, .35); }
+.tint > div { position: absolute; inset: 0; }
+.tint[data-style="vignette"] > div { background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 35%, color-mix(in oklab, var(--accent) 70%, var(--accent-2)) 100%); }
+.tint[data-style="wash"] > div { background: linear-gradient(160deg, var(--accent), var(--accent-2)); }
+.tint[data-style="leaks"] > div {
+  inset: -15%;
+  background:
+    radial-gradient(circle at 8% 8%, var(--accent), transparent 42%),
+    radial-gradient(circle at 92% 92%, var(--accent-2), transparent 45%);
+}
+.tint.motion > div { animation: tintBreathe 7s ease-in-out infinite; }
+.tint.motion[data-style="leaks"] > div { animation: tintBreathe 7s ease-in-out infinite, leakDrift 18s ease-in-out infinite; }
+@keyframes tintBreathe { 0%,100% { opacity: .7; } 50% { opacity: 1; } }
+@keyframes leakDrift { 50% { transform: translate(4%, 3%) rotate(4deg); } }
+
 /* ---------- contour global de l'écran (couleurs du mode) ---------- */
 .edge {
   position: absolute; inset: 0; pointer-events: none;
@@ -447,6 +483,8 @@ body.preview {
 </head>
 <body>
 <div class="stage booting" id="stage" data-mode="focus" data-pos="bottom-left" data-side="left">
+  <div class="veil" id="veil"><div class="veil-blobs"><i></i><i></i><i></i></div><div class="fx-grain"></div></div>
+  <div class="tint" id="tint" data-style="vignette"><div></div></div>
   <div class="edge" id="edge" data-style="flow"><div class="edge-halo"><div></div></div><div class="edge-ring"></div></div>
   <div class="rig" id="rig">
     <div class="sizer" id="sizer">
@@ -524,7 +562,11 @@ body.preview {
     },
     visibility: { panel: true, mode: true, timer: true, message: true },
     border: { enabled: false, thickness: 8, style: 'flow', speed: 1, glow: 0.6, radius: 0,
-              modes: { focus: true, help: true, afk: true, open: true } }
+              modes: { focus: true, help: true, afk: true, open: true } },
+    veil: { enabled: true, opacity: 0.8, tint: 0.5, grain: true, motion: true,
+            modes: { focus: false, help: false, afk: true, open: false } },
+    tint: { enabled: false, style: 'vignette', intensity: 0.35, motion: true,
+            modes: { focus: true, help: true, afk: true, open: true } }
   };
   const POSITIONS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
@@ -553,7 +595,7 @@ body.preview {
   const root = document.documentElement;
 
   const params = new URLSearchParams(location.search);
-  const ONLY = ['timer', 'mode', 'message', 'fx', 'border'].includes(params.get('only')) ? params.get('only') : null;
+  const ONLY = ['timer', 'mode', 'message', 'fx', 'border', 'veil', 'tint'].includes(params.get('only')) ? params.get('only') : null;
   if (params.get('preview') === '1') document.body.classList.add('preview');
 
   /* ---------------- fonts ---------------- */
@@ -655,6 +697,20 @@ body.preview {
     edgeEl.style.setProperty('--edge-glow', String(clamp(num(bd.glow, 0.6), 0, 1)));
     const speed = clamp(num(bd.speed, 1), 0.2, 4);
     edgeEl.style.setProperty('--edge-dur', ((edgeStyle === 'pulse' ? 2.4 : 6) / speed).toFixed(2) + 's');
+
+    /* voile flou + teinte lumineuse */
+    const layerOn = (cfg, name) => cfg.enabled === true && (ONLY === null || ONLY === name) && isObj(cfg.modes) && cfg.modes[mode] === true;
+    const vl = S.veil, veilEl = $('veil');
+    veilEl.classList.toggle('on', layerOn(vl, 'veil'));
+    veilEl.classList.toggle('motion', vl.motion !== false);
+    veilEl.classList.toggle('no-grain', vl.grain === false);
+    veilEl.style.setProperty('--veil-op', String(clamp(num(vl.opacity, 0.8), 0.05, 1)));
+    veilEl.style.setProperty('--veil-tint', String(clamp(num(vl.tint, 0.5), 0, 1)));
+    const tn = S.tint, tintEl = $('tint');
+    tintEl.classList.toggle('on', layerOn(tn, 'tint'));
+    tintEl.classList.toggle('motion', tn.motion !== false);
+    tintEl.dataset.style = ['vignette', 'wash', 'leaks'].includes(tn.style) ? tn.style : 'vignette';
+    tintEl.style.setProperty('--tint-op', String(clamp(num(tn.intensity, 0.35), 0.02, 1)));
 
     /* timer label */
     setText(timerLabelEl, S.timer.label != null ? String(S.timer.label) : '', false);

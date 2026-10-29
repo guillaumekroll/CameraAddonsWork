@@ -63,6 +63,23 @@ const DEFAULT_STATE = {
     radius: 0, // coins arrondis (px)
     modes: { focus: true, help: true, afk: true, open: true }, // modes où le contour s'affiche
   },
+  // Voile flou "verre dépoli" (sous tous les éléments de l'overlay)
+  veil: {
+    enabled: true,
+    opacity: 0.8, // couverture 0..1
+    tint: 0.5, // part de la couleur du mode 0..1
+    grain: true,
+    motion: true, // halos qui dérivent lentement
+    modes: { focus: false, help: false, afk: true, open: false },
+  },
+  // Calque de lumière teintée selon le mode
+  tint: {
+    enabled: false,
+    style: 'vignette', // vignette | wash | leaks
+    intensity: 0.35,
+    motion: true,
+    modes: { focus: true, help: true, afk: true, open: true },
+  },
   deck: { keySize: 96 }, // taille des touches du deck (px)
   // Listes réutilisables (partagées entre dashboard et deck)
   library: {
@@ -182,6 +199,12 @@ function clampNumbers() {
   b.glow = Math.min(1, Math.max(0, Number(b.glow) || 0));
   b.radius = Math.min(80, Math.max(0, Math.round(Number(b.radius) || 0)));
   if (!['flow', 'pulse', 'static'].includes(b.style)) b.style = 'flow';
+  const v = state.veil;
+  v.opacity = Math.min(1, Math.max(0.05, Number(v.opacity) || 0.8));
+  v.tint = Math.min(1, Math.max(0, Number(v.tint) || 0));
+  const t = state.tint;
+  t.intensity = Math.min(1, Math.max(0.02, Number(t.intensity) || 0.35));
+  if (!['vignette', 'wash', 'leaks'].includes(t.style)) t.style = 'vignette';
   state.deck.keySize = Math.min(220, Math.max(56, Math.round(Number(state.deck.keySize) || 96)));
   // listes : chaînes non vides, uniques, longueur et nombre bornés
   const list = (arr, maxLen, maxItems) =>

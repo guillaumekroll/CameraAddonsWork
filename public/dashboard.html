@@ -343,6 +343,60 @@
       <datalist id="fontList"></datalist>
     </section>
 
+    <!-- AMBIANCE -->
+    <section>
+      <h2>Voile flou (verre dépoli) <span class="grow"></span>
+        <label class="switch"><input type="checkbox" data-path="veil.enabled"><i></i>Activé</label>
+      </h2>
+      <div class="row" style="gap:16px">
+          <label class="switch"><input type="checkbox" data-path="veil.modes.focus"><i></i><span style="color:var(--c-focus)">Focus</span></label>
+          <label class="switch"><input type="checkbox" data-path="veil.modes.help"><i></i><span style="color:var(--c-help)">Help</span></label>
+          <label class="switch"><input type="checkbox" data-path="veil.modes.afk"><i></i><span style="color:var(--c-afk)">AFK</span></label>
+          <label class="switch"><input type="checkbox" data-path="veil.modes.open"><i></i><span style="color:var(--c-open)">Open</span></label>
+      </div>
+      <div class="grid2" style="margin-top:14px">
+        <label class="f">Opacité du voile : <b id="vOpVal">80 %</b>
+          <input type="range" min="0.05" max="1" step="0.05" data-path="veil.opacity" data-type="number">
+        </label>
+        <label class="f">Teinte du mode : <b id="vTintVal">50 %</b>
+          <input type="range" min="0" max="1" step="0.05" data-path="veil.tint" data-type="number">
+        </label>
+      </div>
+      <div class="row" style="margin-top:12px; gap:20px">
+        <label class="switch"><input type="checkbox" data-path="veil.grain"><i></i>Grain</label>
+        <label class="switch"><input type="checkbox" data-path="veil.motion"><i></i>Halos animés</label>
+      </div>
+      <p class="hint">Couvre l'image derrière l'overlay ; timer, panneau, contour et effets restent nets au-dessus. Source OBS dédiée : <code>/overlay?only=veil</code></p>
+    </section>
+
+    <section>
+      <h2>Glow lumineux (teinte du mode) <span class="grow"></span>
+        <label class="switch"><input type="checkbox" data-path="tint.enabled"><i></i>Activé</label>
+      </h2>
+      <div class="row" style="gap:16px">
+          <label class="switch"><input type="checkbox" data-path="tint.modes.focus"><i></i><span style="color:var(--c-focus)">Focus</span></label>
+          <label class="switch"><input type="checkbox" data-path="tint.modes.help"><i></i><span style="color:var(--c-help)">Help</span></label>
+          <label class="switch"><input type="checkbox" data-path="tint.modes.afk"><i></i><span style="color:var(--c-afk)">AFK</span></label>
+          <label class="switch"><input type="checkbox" data-path="tint.modes.open"><i></i><span style="color:var(--c-open)">Open</span></label>
+      </div>
+      <div class="grid2" style="margin-top:14px">
+        <label class="f">Style
+          <select data-path="tint.style">
+            <option value="vignette">Vignette · lumière sur les bords</option>
+            <option value="wash">Voile · teinte uniforme</option>
+            <option value="leaks">Light leaks · lumière dans les coins</option>
+          </select>
+        </label>
+        <label class="f">Intensité : <b id="tIntVal">35 %</b>
+          <input type="range" min="0.02" max="1" step="0.02" data-path="tint.intensity" data-type="number">
+        </label>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <label class="switch"><input type="checkbox" data-path="tint.motion"><i></i>Respiration lente</label>
+      </div>
+      <p class="hint">Astuce : en source séparée (<code>/overlay?only=tint</code>) avec le mode de fusion OBS « Écran » ou « Additif » (clic droit sur la source), la teinte éclaire vraiment l'image au lieu de la recouvrir.</p>
+    </section>
+
     <!-- CONTOUR -->
     <section>
       <h2>Contour de l'écran <span class="grow"></span>
@@ -490,6 +544,9 @@
 
     $('#scaleVal').textContent = Number(state.style.scale).toFixed(2) + '×';
     $('#msgSizeVal').textContent = state.style.messageSize + ' px';
+    $('#vOpVal').textContent = Math.round(state.veil.opacity * 100) + ' %';
+    $('#vTintVal').textContent = Math.round(state.veil.tint * 100) + ' %';
+    $('#tIntVal').textContent = Math.round(state.tint.intensity * 100) + ' %';
     $('#bwVal').textContent = state.border.thickness + ' px';
     $('#bsVal').textContent = Number(state.border.speed).toFixed(1) + '×';
     $('#bgVal').textContent = Math.round(state.border.glow * 100) + ' %';

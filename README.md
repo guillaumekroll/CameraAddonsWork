@@ -26,6 +26,14 @@ Une source par élément (pour les positionner librement dans OBS) :
 
 Dans le dashboard (section Style) : largeur et hauteur du panneau mode/timer en px, ou « Auto » (taille selon le contenu). En largeur fixe, le timer et le libellé rétrécissent pour tenir. L'« échelle » agit en plus, sur l'ensemble.
 
+## Ambiance : voile flou et glow lumineux
+
+Deux calques de fond, sous tous les autres éléments (Matrix, contour, panneau, timer, message et effets restent nets au-dessus), activables et réglables mode par mode :
+- **Voile flou (verre dépoli)** : activé par défaut en AFK. Opacité, part de couleur du mode, grain, halos animés. Il recouvre l'image derrière l'overlay (une source Navigateur ne peut pas flouter la vraie image OBS).
+- **Glow lumineux** : teinte aux couleurs du mode : vignette, voile uniforme ou « light leaks » dans les coins ; intensité, respiration lente.
+- Sources OBS dédiées : `/overlay?only=veil`, `/overlay?only=tint`. Astuce : la source `tint` en mode de fusion OBS « Écran » ou « Additif » éclaire vraiment l'image.
+- Touches « Voile flou » et « Glow mode » dans le Deck.
+
 ## Contour de l'écran
 
 Dashboard → **Contour de l'écran** : un cadre animé autour de tout l'overlay, aux couleurs du mode actif (transition fluide au changement de mode).

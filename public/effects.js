@@ -46,9 +46,9 @@
   canvas.className = 'fx-matrix';
   canvas.width = W;
   canvas.height = H;
-  const stage = document.getElementById('stage');
-  // Matrix derrière le panneau, animaux devant
-  stage ? stage.before(canvas) : document.body.prepend(canvas);
+  // Matrix au-dessus du voile / de la teinte, sous le contour et le panneau ; animaux devant
+  const edge = document.getElementById('edge');
+  edge ? edge.before(canvas) : document.body.prepend(canvas);
   const petLayer = document.createElement('div');
   petLayer.className = 'fx-pets';
   document.body.appendChild(petLayer);
