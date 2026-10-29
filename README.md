@@ -48,15 +48,16 @@ Section « Effets » du dashboard :
 - **Chatons / chiens** qui apparaissent au hasard (intervalle min–max en secondes, taille réglable), ou à la demande.
 - **Anniversaire** : feu d'artifice, gâteaux qui surgissent de tous les côtés et au centre, bannière « JOYEUX ANNIVERSAIRE » + prénom (~13 s).
 - **Feu d'artifice** seul (8 s).
+- **Dodo** : un personnage en pyjama, avec la photo de ta tête (📷 dans le dashboard, recadrée en carré), arrive à pied, saute dans un lit, met son bonnet de nuit et dort (lit en bas à gauche, décalage 0–200 px réglable) avec des « zZz » qui s'envolent. À la demande (durée réglable ou sans limite de temps, bouton « Réveiller ») ou automatiquement en passant en AFK. Option « Me réveiller quand je quitte l'AFK » (sinon le personnage finit son dodo). La photo est enregistrée dans `data/avatar.png`.
 - **Pluie Matrix** en continu (opacité, vitesse, couleur) ou en rafale de 9 s. Elle passe derrière le panneau.
 
-Source OBS dédiée aux effets : `/overlay?only=fx`. Test sans dashboard : `/overlay?preview=1&fx=cat` (ou `dog`, `matrix`, `fireworks`, `birthday&name=Alice`).
+Source OBS dédiée aux effets : `/overlay?only=fx`. Test sans dashboard : `/overlay?preview=1&fx=cat` (ou `dog`, `matrix`, `fireworks`, `birthday&name=Alice`, `sleep`).
 
 Emojis animés : [Noto Emoji](https://googlefonts.github.io/noto-emoji-animation/) de Google, licence CC BY 4.0 (fichiers dans `public/assets/pets/` et `public/assets/party/`).
 
 ## Profils
 
-Barre tout en haut du dashboard : règle l'overlay, donne un nom, « Enregistrer l'actuel ». Un clic sur un profil rappelle le mode de travail et tous les réglages (libellés des modes, style, visibilité, effets, contour, voile, glow, son de fin, options du message). Le timer et le texte du message ne sont pas touchés. « 💾 Réenregistrer » (à droite, mis en avant quand le profil actif est `● modifié`) remplace le profil actif par les réglages actuels, après un second clic de confirmation. Un nom déjà pris ne peut pas servir à créer un nouveau profil. Glisse un profil (poignée `⋮⋮`) pour changer son ordre, repris aussi sur le deck. Les profils apparaissent aussi en touches sur le deck.
+Barre tout en haut du dashboard : règle l'overlay, donne un nom, « Enregistrer l'actuel ». Un clic sur un profil rappelle le mode de travail et tous les réglages (libellés des modes, style, visibilité, effets, contour, voile, glow, son de fin, message affiché et ses options). Le timer n'est pas touché. « 💾 Réenregistrer » (à droite, mis en avant quand le profil actif est `● modifié`) remplace le profil actif par les réglages actuels, après un second clic de confirmation. Un nom déjà pris ne peut pas servir à créer un nouveau profil. Glisse un profil (poignée `⋮⋮`) pour changer son ordre, repris aussi sur le deck. Les profils apparaissent aussi en touches sur le deck.
 
 ## Deck (tablette / téléphone)
 
@@ -64,7 +65,7 @@ Barre tout en haut du dashboard : règle l'overlay, donne un nom, « Enregistrer
 
 ## Raccourcis du dashboard
 
-`Espace` démarrer/pause · `R` reset timer · `1` `2` `3` `4` modes FOCUS / HELP / AFK / OPEN TO DISCUSS · `C` chaton · `D` chien · `M` rafale Matrix · `F` feu d'artifice · `Ctrl+Entrée` afficher le message.
+`Espace` démarrer/pause · `R` reset timer · `1` `2` `3` `4` modes FOCUS / HELP / AFK / OPEN TO DISCUSS · `C` chaton · `D` chien · `S` dodo · `M` rafale Matrix · `F` feu d'artifice · `Ctrl+Entrée` afficher le message.
 
 ## API HTTP (Stream Deck, scripts)
 
@@ -78,6 +79,7 @@ Barre tout en haut du dashboard : règle l'overlay, donne un nom, « Enregistrer
 | `/api/fx/cat` · `dog` · `matrix` · `fireworks` | effet ponctuel |
 | `/api/fx/birthday?name=Alice` | anniversaire |
 | `/api/fx/alarm` | joue le son de fin de timer (test) |
+| `/api/fx/sleep` · `wake` | lance le dodo / réveille le personnage |
 | `/api/profile/Nom` | applique un profil enregistré (espaces : `%20`) |
 | `/api/state` | état courant (JSON) |
 

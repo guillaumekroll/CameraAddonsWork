@@ -16,6 +16,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 // Toute la configuration est sauvegardée dans ce fichier JSON (STATE_FILE pour le changer)
 const STATE_FILE = path.resolve(process.env.STATE_FILE || path.join(__dirname, 'data', 'state.json'));
 const BACKUP_FILE = STATE_FILE.replace(/\.json$/, '') + '.backup.json';
+const AVATAR_FILE = path.join(path.dirname(STATE_FILE), 'avatar.png'); // photo du personnage « dodo »
 
 const MODES = ['focus', 'help', 'afk', 'open'];
 
@@ -58,7 +59,14 @@ const DEFAULT_STATE = {
     matrixOpacity: 0.35,
     matrixColor: '#00ff66',
     matrixSpeed: 1,
+    sleepAfk: false, // le personnage s'endort quand on passe en mode AFK
+    sleepWakeAfk: true, // quitter l'AFK réveille le personnage (sinon il finit son dodo)
+    sleepUnlimited: false, // dodo sans limite de temps (jusqu'à « Réveiller »)
+    sleepSec: 30, // durée d'un dodo lancé à la main
+    sleepSize: 320, // largeur du lit (px)
+    sleepLeft: 0, // décalage du lit depuis le bord gauche (px)
   },
+  avatar: { version: 0 }, // photo de la tête du personnage (0 = visage par défaut)
   // Contour global de l'écran, aux couleurs du mode
   border: {
     enabled: false,
@@ -105,9 +113,9 @@ const DEFAULT_STATE = {
   },
 };
 
-// Sections enregistrées dans un profil (+ le mode de travail). Ne touche pas au timer ni au texte du message.
+// Sections enregistrées dans un profil (+ le mode de travail), message affiché compris. Ne touche pas au timer.
 const PROFILE_KEYS = ['modes', 'style', 'visibility', 'fx', 'border', 'veil', 'tint', 'alarm', 'message'];
-const FX_TRIGGERS = ['cat', 'dog', 'matrix', 'fireworks', 'birthday', 'alarm']; // alarm = tester le son de fin
+const FX_TRIGGERS = ['cat', 'dog', 'matrix', 'fireworks', 'birthday', 'alarm', 'sleep', 'wake']; // alarm = tester le son de fin
 
 // ---------- État ----------
 
@@ -212,6 +220,10 @@ function clampNumbers() {
   fx.matrixOpacity = Math.min(1, Math.max(0.05, Number(fx.matrixOpacity) || 0.35));
   fx.matrixSpeed = Math.min(3, Math.max(0.2, Number(fx.matrixSpeed) || 1));
   if (!/^#[0-9a-f]{6}$/i.test(fx.matrixColor)) fx.matrixColor = '#00ff66';
+  fx.sleepSec = Math.min(600, Math.max(5, Math.round(Number(fx.sleepSec) || 30)));
+  fx.sleepSize = Math.min(1200, Math.max(160, Math.round(Number(fx.sleepSize) || 320)));
+  fx.sleepLeft = Math.min(200, Math.max(0, Math.round(Number(fx.sleepLeft) || 0)));
+  if (state.avatar.version && !fs.existsSync(AVATAR_FILE)) state.avatar.version = 0;
   const m = state.message;
   m.maxLines = Math.min(8, Math.max(1, Math.round(Number(m.maxLines) || 2)));
   m.speed = Math.min(400, Math.max(20, Math.round(Number(m.speed) || 110)));
@@ -339,7 +351,6 @@ function triggerFx(effect, name) {
 function profileData() {
   const data = {};
   for (const k of PROFILE_KEYS) data[k] = structuredClone(state[k]);
-  delete data.message.text;
   data.mode = state.mode;
   return data;
 }
@@ -353,7 +364,8 @@ function applyProfile(name) {
   const data = {};
   for (const k of PROFILE_KEYS) if (isObject(p.data[k])) data[k] = p.data[k];
   mergeKnown(state, data, DEFAULT_STATE);
-  state.message.text = text;
+  // profils anciens sans texte de message : texte affiché inchangé
+  if (!(isObject(p.data.message) && typeof p.data.message.text === 'string')) state.message.text = text;
   if (MODES.includes(p.data.mode)) state.mode = p.data.mode; // profils anciens sans mode : mode inchangé
   state.activeProfile = p.name;
   return true;
@@ -453,11 +465,14 @@ function serveStatic(res, pathname) {
 //   /api/fx/cat | dog | matrix | fireworks  (effet ponctuel)
 //   /api/fx/birthday?name=Alice
 //   /api/profile/Nom%20du%20profil  (applique un profil enregistré)
+//   /api/fx/sleep | wake  (dodo du personnage / réveil)
+//   /api/avatar  GET = photo du personnage, POST = envoyer un PNG, DELETE = retirer
 //   /api/config  GET = télécharger la config, POST = importer
 function handleApi(req, res, url) {
   const parts = url.pathname.split('/').filter(Boolean); // ['api', ...]
   if (parts[1] === 'state') return sendJson(res, 200, { serverNow: Date.now(), state });
   if (parts[1] === 'config') return handleConfig(req, res);
+  if (parts[1] === 'avatar') return handleAvatar(req, res);
   if (parts[1] === 'fx') {
     return triggerFx(parts[2], url.searchParams.get('name')) ? sendJson(res, 200, { ok: true }) : sendJson(res, 400, { error: 'effet inconnu' });
   }
@@ -477,6 +492,48 @@ function handleApi(req, res, url) {
   if (!cmd || !applyCommand(cmd)) return sendJson(res, 400, { error: 'commande invalide' });
   commit();
   sendJson(res, 200, { ok: true, state });
+}
+
+// Photo du personnage (PNG carré préparé par le dashboard), rangée à côté du fichier de config
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+function handleAvatar(req, res) {
+  if (req.method === 'GET') {
+    return fs.readFile(AVATAR_FILE, (err, data) => {
+      if (err) return sendJson(res, 404, { error: 'pas de photo' });
+      res.writeHead(200, { 'Content-Type': MIME['.png'], 'Cache-Control': 'no-cache' });
+      res.end(data);
+    });
+  }
+  if (req.method === 'DELETE') {
+    fs.rm(AVATAR_FILE, { force: true }, () => {
+      state.avatar.version = 0;
+      commit();
+      sendJson(res, 200, { ok: true });
+    });
+    return;
+  }
+  if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+  const chunks = [];
+  let size = 0;
+  req.on('data', (chunk) => {
+    size += chunk.length;
+    if (size > 3e6) return void req.destroy();
+    chunks.push(chunk);
+  });
+  req.on('end', () => {
+    const data = Buffer.concat(chunks);
+    if (!data.subarray(0, 8).equals(PNG_SIGNATURE)) return sendJson(res, 400, { error: 'PNG attendu' });
+    try {
+      fs.mkdirSync(path.dirname(AVATAR_FILE), { recursive: true });
+      fs.writeFileSync(AVATAR_FILE + '.tmp', data);
+      fs.renameSync(AVATAR_FILE + '.tmp', AVATAR_FILE);
+    } catch (err) {
+      return sendJson(res, 500, { error: err.message });
+    }
+    state.avatar.version = Date.now();
+    commit();
+    sendJson(res, 200, { ok: true, version: state.avatar.version });
+  });
 }
 
 // Export (GET) / import (POST) de toute la configuration

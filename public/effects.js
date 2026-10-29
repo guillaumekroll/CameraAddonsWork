@@ -1,4 +1,4 @@
-// Effets de l'overlay : chatons / chiens aléatoires, pluie Matrix, feu d'artifice, anniversaire.
+// Effets de l'overlay : chatons / chiens aléatoires, pluie Matrix, feu d'artifice, anniversaire, dodo.
 // Écoute les messages WebSocket relayés par overlay.html (événement 'overlay:msg').
 // Emojis animés : Noto Emoji (Google), licence CC BY 4.0.
 (() => {
@@ -18,6 +18,7 @@
   };
   const src = (code) => `/assets/pets/${code}.webp`;
   const rand = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const weighted = (list) => {
     let r = Math.random() * list.reduce((n, [, w]) => n + w, 0);
@@ -56,6 +57,7 @@
   // ---------- Config ----------
   let cfg = {
     cats: false, dogs: false, petMinSec: 30, petMaxSec: 90, petSize: 180,
+    sleepAfk: false, sleepWakeAfk: true, sleepUnlimited: false, sleepSec: 30, sleepSize: 320, sleepLeft: 0,
     matrix: false, matrixOpacity: 0.35, matrixColor: '#00ff66', matrixSpeed: 1,
   };
   const timers = { cat: 0, dog: 0 };
@@ -587,10 +589,251 @@
     );
   }
 
+  // ---------- Dodo : personnage (photo de l'utilisateur) qui va se coucher ----------
+  const sleeper = (() => {
+    const DEFAULT_FACE = '/assets/sleep/face.svg';
+    const PYJAMA = '#5b7cfa', PYJAMA_2 = '#c9d4ff';
+    let face = DEFAULT_FACE;
+    let run = null; // dodo en cours : { auto, cancelled, els, timers, anims }
+
+    const BED = `<svg viewBox="0 0 100 55" width="100%" height="100%">
+      <rect x="2" y="8" width="9" height="45" rx="3" fill="#8d5a34"/>
+      <rect x="0" y="5" width="13" height="6" rx="3" fill="#a96c3f"/>
+      <rect x="90" y="24" width="8" height="29" rx="3" fill="#8d5a34"/>
+      <rect x="88" y="21" width="12" height="5" rx="2.5" fill="#a96c3f"/>
+      <rect x="11" y="47" width="5" height="8" fill="#5a361e"/><rect x="84" y="47" width="5" height="8" fill="#5a361e"/>
+      <rect x="8" y="40" width="84" height="8" rx="2" fill="#6e4426"/>
+      <rect x="9" y="31" width="83" height="11" rx="4" fill="#eef1f8"/>
+      <ellipse cx="22" cy="29" rx="12" ry="6" fill="#fff" stroke="#d8deea" stroke-width=".8"/>
+    </svg>`;
+    const BLANKET = `<svg viewBox="0 0 100 55" width="100%" height="100%">
+      <path d="M30 27 Q45 15 62 21 Q78 26 93 24 L93 43 L30 43 Z" fill="${PYJAMA}"/>
+      <path d="M30 29 Q45 18 62 23.5 Q78 28.5 93 26.5" stroke="${PYJAMA_2}" stroke-width="2.4" fill="none"/>
+      <g fill="#fff" opacity=".55"><circle cx="44" cy="31" r="1.3"/><circle cx="58" cy="36" r="1.3"/><circle cx="72" cy="32" r="1.3"/><circle cx="84" cy="37" r="1.3"/><circle cx="50" cy="39" r="1"/><circle cx="66" cy="40" r="1"/></g>
+    </svg>`;
+    const BODY = `<svg viewBox="0 0 30 42" width="100%" height="100%">
+      <g class="limb armL"><rect x="1.5" y="3" width="5" height="16" rx="2.5" fill="${PYJAMA}"/><circle cx="4" cy="19" r="2.4" fill="#ffcc80"/></g>
+      <g class="limb armR"><rect x="23.5" y="3" width="5" height="16" rx="2.5" fill="${PYJAMA}"/><circle cx="26" cy="19" r="2.4" fill="#ffcc80"/></g>
+      <g class="limb legL"><rect x="7.5" y="19" width="6.5" height="20" rx="3" fill="${PYJAMA}"/><ellipse cx="10" cy="40" rx="4.6" ry="2.2" fill="#3a3f55"/></g>
+      <g class="limb legR"><rect x="16" y="19" width="6.5" height="20" rx="3" fill="${PYJAMA}"/><ellipse cx="20" cy="40" rx="4.6" ry="2.2" fill="#3a3f55"/></g>
+      <rect x="5" y="0" width="20" height="23" rx="6" fill="${PYJAMA}"/>
+      <g fill="${PYJAMA_2}" opacity=".7"><rect x="9" y="2" width="2" height="19"/><rect x="14" y="2" width="2" height="19"/><rect x="19" y="2" width="2" height="19"/></g>
+    </svg>`;
+    const CAP = `<svg viewBox="0 0 70 44" width="100%" height="100%">
+      <path d="M6 34 Q22 0 62 8 Q46 18 58 34 Z" fill="${PYJAMA}"/>
+      <rect x="2" y="30" width="58" height="11" rx="5.5" fill="#fff"/>
+      <circle cx="62" cy="8" r="6" fill="#fff"/>
+    </svg>`;
+
+    const css = document.createElement('style');
+    css.textContent = `
+      .fx-sl { position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform, opacity; }
+      .fx-sl svg { display: block; overflow: visible; }
+      .fx-face { position: absolute; border-radius: 50%; overflow: hidden; background: #ffcc80;
+        box-shadow: 0 0 0 3px #fff, 0 6px 14px rgba(0,0,0,.4); }
+      .fx-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      .fx-walker .limb { transform-box: fill-box; transform-origin: 50% 8%; }
+      .fx-walker.walking .legL, .fx-walker.walking .armR { animation: fxLimb .42s ease-in-out infinite alternate; }
+      .fx-walker.walking .legR, .fx-walker.walking .armL { animation: fxLimb .42s ease-in-out infinite alternate-reverse; }
+      .fx-walker.walking .fx-wbody { animation: fxStep .21s ease-in-out infinite alternate; }
+      .fx-walker .fx-face { animation: fxYawn 2.4s ease-in-out infinite; }
+      .fx-blanket { transform-origin: 50% 78%; animation: fxBreathe 2.2s ease-in-out infinite alternate; }
+      .fx-dozer { transform-origin: 50% 100%; animation: fxDoze 2.2s ease-in-out infinite alternate; }
+      .fx-z { position: absolute; left: 0; top: 0; font: 900 40px/1 system-ui, sans-serif; color: #fff;
+        -webkit-text-stroke: 2px #1b2140; paint-order: stroke fill; text-shadow: 0 4px 10px rgba(0,0,0,.45); will-change: transform, opacity; }
+      @keyframes fxLimb { from { transform: rotate(24deg); } to { transform: rotate(-24deg); } }
+      @keyframes fxStep { from { transform: translateY(0); } to { transform: translateY(-4%); } }
+      @keyframes fxYawn { 0%,100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+      @keyframes fxBreathe { from { transform: scaleY(1); } to { transform: scaleY(1.07); } }
+      @keyframes fxDoze { from { transform: rotate(-14deg) translateY(0); } to { transform: rotate(-10deg) translateY(2%); } }
+    `;
+    document.head.appendChild(css);
+
+    function setFace(url) {
+      face = url || DEFAULT_FACE;
+      new Image().src = face;
+    }
+    function el(cls, w, h, html = '') {
+      const e = document.createElement('div');
+      e.className = 'fx-sl ' + cls;
+      e.style.width = w + 'px';
+      e.style.height = h + 'px';
+      e.innerHTML = html;
+      petLayer.appendChild(e);
+      run.els.push(e);
+      return e;
+    }
+    function faceEl(parent, d, left, top) {
+      const f = document.createElement('div');
+      f.className = 'fx-face';
+      Object.assign(f.style, { width: d + 'px', height: d + 'px', left: left + 'px', top: top + 'px' });
+      const img = document.createElement('img');
+      img.src = face;
+      img.alt = '';
+      img.onerror = () => { if (img.src.indexOf(DEFAULT_FACE) < 0) img.src = DEFAULT_FACE; };
+      f.appendChild(img);
+      parent.appendChild(f);
+      return f;
+    }
+    const anim = (e, frames, opts) => {
+      const a = e.animate(frames, { fill: 'forwards', ...opts });
+      run.anims.push(a);
+      return a.finished.catch(() => {});
+    };
+    const wait = (ms) => new Promise((r) => run.timers.push(setTimeout(r, ms)));
+
+    // ms = 0 : pas de limite de temps. auto = dodo lié au mode AFK (sans limite tant qu'on y reste)
+    function scheduleEnd(me) {
+      clearTimeout(me.endTimer);
+      if (me.asleep && !me.auto && me.ms) me.endTimer = setTimeout(() => stop(me), me.ms);
+    }
+    function setAuto(on, ms = 0) {
+      if (!run) return;
+      run.auto = on;
+      run.ms = ms;
+      scheduleEnd(run);
+    }
+
+    async function start(ms, auto) {
+      if (run) {
+        if (!auto && run.auto) return; // déjà endormi par le mode AFK
+        if (!auto) { run.ms = ms; scheduleEnd(run); return; } // relance : repart pour une durée complète
+        stop(run, true);
+      }
+      const me = (run = { auto, ms, cancelled: false, els: [], timers: [], anims: [] });
+      const u = cfg.sleepSize || 320;          // largeur du lit
+      const bedH = u * 0.55;
+      const bx = clamp(Number(cfg.sleepLeft) || 0, 0, 200), by = H - bedH - 10; // calé à gauche + décalage
+      const d = u * 0.26;                       // diamètre de la tête qui marche
+      const ww = u * 0.3, bh = u * 0.42, wh = d * 0.85 + bh;
+      const floorY = H - 10 - wh;
+
+      // 1. le lit monte depuis le bas
+      const bed = el('fx-bed', u, bedH, BED);
+      bed.style.transform = `translate(${bx}px, ${by}px)`;
+      await anim(bed, [
+        { transform: `translate(${bx}px, ${by + bedH}px)`, opacity: 0 },
+        { transform: `translate(${bx}px, ${by}px)`, opacity: 1 },
+      ], { duration: 700, easing: 'cubic-bezier(.2,1.3,.4,1)' });
+      if (me.cancelled) return;
+
+      // 2. le personnage arrive à pied depuis le bord le plus proche
+      const ltr = bx + u / 2 < W / 2 && bx > ww * 1.1; // pas la place à gauche du lit : arrive par la droite
+      const walker = el('fx-walker walking', ww, wh);
+      const wbody = document.createElement('div');
+      wbody.className = 'fx-wbody';
+      Object.assign(wbody.style, { position: 'absolute', inset: '0' });
+      wbody.innerHTML = `<div style="position:absolute;left:0;top:${d * 0.85}px;width:${ww}px;height:${bh}px">${BODY}</div>`;
+      faceEl(wbody, d, (ww - d) / 2, 0);
+      walker.appendChild(wbody);
+      const x0 = ltr ? -ww - 20 : W + 20;
+      const x1 = ltr ? bx - ww * 1.05 : bx + u + ww * 0.05; // s'arrête à côté du lit
+      const speed = 320 * (u / 320);
+      await anim(walker, [
+        { transform: `translate(${x0}px, ${floorY}px)` },
+        { transform: `translate(${x1}px, ${floorY}px)` },
+      ], { duration: clamp(Math.abs(x1 - x0) / speed * 1000, 1200, 5000), easing: 'linear' });
+      if (me.cancelled) return;
+      walker.classList.remove('walking');
+      await wait(450);
+      if (me.cancelled) return;
+
+      // 3. saut dans le lit
+      const x2 = bx + u * 0.55 - ww / 2, top2 = by - wh * 0.15;
+      const hop = [];
+      for (let i = 0; i <= 12; i++) {
+        const p = i / 12;
+        const x = x1 + (x2 - x1) * p;
+        const y = floorY + (top2 - floorY) * p - Math.sin(Math.PI * p) * u * 0.35;
+        const r = (ltr ? -1 : 1) * 70 * p;
+        hop.push({ transform: `translate(${x}px, ${y}px) rotate(${r}deg) scale(${1 - 0.25 * p})`, opacity: p > 0.8 ? (1 - p) * 5 : 1 });
+      }
+      await anim(walker, hop, { duration: 750, easing: 'ease-in' });
+      if (me.cancelled) return;
+      walker.remove();
+
+      // 4. couché : tête sur l'oreiller avec bonnet de nuit, couverture qui respire
+      const hd = u * 0.24;
+      const head = el('', hd, hd);
+      const doze = document.createElement('div');
+      doze.className = 'fx-dozer';
+      Object.assign(doze.style, { position: 'absolute', inset: '0' });
+      faceEl(doze, hd, 0, 0);
+      const cap = document.createElement('div');
+      Object.assign(cap.style, { position: 'absolute', left: -hd * 0.12 + 'px', top: -hd * 0.5 + 'px', width: hd * 1.2 + 'px', height: hd * 0.75 + 'px' });
+      cap.innerHTML = CAP;
+      doze.appendChild(cap);
+      head.appendChild(doze);
+      head.style.transform = `translate(${bx + u * 0.22 - hd / 2}px, ${by + bedH * 0.5 - hd}px)`;
+      const blanket = el('', u, bedH, `<div class="fx-blanket" style="width:100%;height:100%">${BLANKET}</div>`);
+      blanket.style.transform = `translate(${bx}px, ${by}px)`;
+      anim(blanket, [
+        { transform: `translate(${bx}px, ${by - u * 0.1}px) scaleY(1.25)`, opacity: 0 },
+        { transform: `translate(${bx}px, ${by}px)`, opacity: 1 },
+      ], { duration: 380, easing: 'cubic-bezier(.3,1.5,.5,1)' });
+      const hx = bx + u * 0.22 - hd / 2, hy = by + bedH * 0.5 - hd;
+      await anim(head, [
+        { transform: `translate(${hx}px, ${hy}px) scale(0)` },
+        { transform: `translate(${hx}px, ${hy}px) scale(1.12)`, offset: 0.7 },
+        { transform: `translate(${hx}px, ${hy}px) scale(1)` },
+      ], { duration: 450, easing: 'ease-out' });
+      if (me.cancelled) return;
+
+      // 5. zZzZz qui s'envolent au-dessus de la tête
+      let n = 0;
+      const zx = hx + hd * 0.8, zy = hy - hd * 0.1;
+      const puff = () => {
+        if (me.cancelled || me.waking) return;
+        const z = document.createElement('div');
+        z.className = 'fx-z';
+        z.textContent = n++ % 2 ? 'Z' : 'z';
+        z.style.fontSize = u * (n % 2 ? 0.1 : 0.075) + 'px';
+        petLayer.appendChild(z);
+        me.els.push(z);
+        const frames = [];
+        const drift = rand(0.25, 0.4) * u, rise = rand(0.5, 0.7) * u, sway = u * 0.06, phase = rand(0, Math.PI);
+        for (let i = 0; i <= 10; i++) {
+          const p = i / 10;
+          const x = zx + drift * p + Math.sin(phase + p * Math.PI * 2.2) * sway;
+          const y = zy - rise * p;
+          frames.push({
+            transform: `translate(${x}px, ${y}px) rotate(${Math.sin(phase + p * 6) * 18}deg) scale(${0.4 + p * 1.1})`,
+            opacity: p < 0.15 ? p / 0.15 : p > 0.7 ? (1 - p) / 0.3 : 1,
+          });
+        }
+        z.animate(frames, { duration: 3200, easing: 'linear' }).finished.finally(() => z.remove());
+        me.timers.push(setTimeout(puff, 650));
+      };
+      puff();
+      me.asleep = true;
+      scheduleEnd(me);
+    }
+
+    // Réveil : tout disparaît en douceur (immédiat si on enchaîne un nouveau dodo)
+    function stop(target = run, instant = false) {
+      if (!target || target !== run) return;
+      run = null;
+      target.waking = true;
+      clearTimeout(target.endTimer);
+      target.timers.forEach(clearTimeout);
+      const remove = () => target.els.forEach((e) => e.remove());
+      if (instant) { target.cancelled = true; target.anims.forEach((a) => a.cancel()); return remove(); }
+      setTimeout(() => (target.cancelled = true), 0);
+      for (const e of target.els) {
+        if (!e.isConnected || e.classList.contains('fx-z')) continue;
+        e.animate([{ opacity: 1, translate: '0 0' }, { opacity: 0, translate: `0 ${(cfg.sleepSize || 320) * 0.4}px` }],
+          { duration: 900, easing: 'ease-in', fill: 'forwards' });
+      }
+      setTimeout(remove, 950);
+    }
+
+    return { start, stop: () => stop(), setAuto, setFace, get active() { return run; } };
+  })();
+
   // ---------- Messages ----------
   window.addEventListener('overlay:msg', (e) => {
     const d = e.detail;
-    if (d.type === 'state') applyState(d.state);
+    if (d.type === 'state') { applyState(d.state); applySleep(d.state); }
     else if (d.type === 'fx') {
       if (d.effect === 'cat' || d.effect === 'dog') {
         preload();
@@ -598,15 +841,39 @@
       } else if (d.effect === 'matrix') matrix.burst();
       else if (d.effect === 'fireworks') fireworks.show(8000);
       else if (d.effect === 'birthday') birthday(d.name);
+      else if (d.effect === 'sleep') sleeper.start(sleepMs(), false);
+      else if (d.effect === 'wake') sleeper.stop();
     }
   });
-  if (window.__overlayLastState) applyState(window.__overlayLastState.state);
+  // Photo du personnage + dodo automatique tant que le mode AFK est actif
+  let faceVersion = null;
+  let prevMode = null;
+  const sleepMs = () => (cfg.sleepUnlimited ? 0 : cfg.sleepSec * 1000);
+  function applySleep(state) {
+    const v = (state && state.avatar && state.avatar.version) || 0;
+    if (v !== faceVersion) { faceVersion = v; sleeper.setFace(v ? `/api/avatar?v=${v}` : ''); }
+    const mode = state && state.mode;
+    const cur = sleeper.active;
+    if (prevMode === 'afk' && mode !== 'afk') {
+      // on quitte l'AFK : réveil, ou le dodo continue comme un dodo lancé à la main
+      if (cur && cfg.sleepWakeAfk) sleeper.stop();
+      else if (cur && cur.auto) sleeper.setAuto(false, sleepMs());
+    } else if (mode === 'afk' && cfg.sleepAfk) {
+      if (!cur) sleeper.start(0, true);
+      else if (!cur.auto) sleeper.setAuto(true); // déjà endormi : on dort tant que l'AFK dure
+    } else if (cur && cur.auto && !cfg.sleepAfk) {
+      sleeper.stop(); // option AFK coupée pendant le dodo
+    }
+    prevMode = mode;
+  }
+  if (window.__overlayLastState) { applyState(window.__overlayLastState.state); applySleep(window.__overlayLastState.state); }
 
-  // Test rapide sans serveur : overlay?preview=1&fx=cat|dog|matrix|fireworks|birthday[&name=Alice]
+  // Test rapide sans serveur : overlay?preview=1&fx=cat|dog|matrix|fireworks|birthday|sleep[&name=Alice]
   const test = params.get('fx');
   if (test === 'matrix') matrix.burst(60000);
   else if (test === 'fireworks') fireworks.show(60000);
   else if (test === 'birthday') birthday(params.get('name') || 'Alice', 60000);
+  else if (test === 'sleep') sleeper.start(60000, false);
   else if (test === 'cat' || test === 'dog') {
     const moves = MOVES[test].map(([m]) => m);
     moves.forEach((m, i) => setTimeout(() => spawnPet(test, m), i * 400));

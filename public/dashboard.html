@@ -173,6 +173,8 @@
   .preview { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #000; }
   .preview iframe { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; pointer-events: none; }
 
+  .avatar-row { display: flex; align-items: center; gap: 14px; margin-top: 10px; }
+  .avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; background: #ffcc80; box-shadow: 0 0 0 2px var(--line); flex: none; }
   .fx-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
   a.btn { text-decoration: none; }
   .hint { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
@@ -279,7 +281,7 @@
         </label>
       </div>
       <p class="hint">Dans OBS, coche « Contrôler l'audio via OBS » sur la source navigateur pour que le son parte dans le stream.</p>
-      <p class="hint"><kbd>Espace</kbd> démarrer / pause · <kbd>R</kbd> reset · <kbd>1</kbd>–<kbd>4</kbd> changer de mode · <kbd>C</kbd> chaton · <kbd>D</kbd> chien · <kbd>M</kbd> Matrix · <kbd>F</kbd> feu d'artifice</p>
+      <p class="hint"><kbd>Espace</kbd> démarrer / pause · <kbd>R</kbd> reset · <kbd>1</kbd>–<kbd>4</kbd> changer de mode · <kbd>C</kbd> chaton · <kbd>D</kbd> chien · <kbd>S</kbd> dodo · <kbd>M</kbd> Matrix · <kbd>F</kbd> feu d'artifice</p>
     </section>
 
     <!-- MESSAGE -->
@@ -346,6 +348,40 @@
           <input type="range" min="60" max="400" step="10" data-path="fx.petSize" data-type="number">
         </label>
       </div>
+
+      <div class="fx-row" style="margin-top:18px; padding-top:16px; border-top:1px solid var(--line)">
+        <label class="switch"><input type="checkbox" data-path="fx.sleepAfk"><i></i>😴 Dodo automatique en mode AFK</label>
+        <div class="row">
+          <button class="btn sm" data-fx="sleep">Lancer le dodo</button>
+          <button class="btn sm" data-fx="wake">Réveiller</button>
+        </div>
+      </div>
+      <div class="fx-row">
+        <label class="switch"><input type="checkbox" data-path="fx.sleepWakeAfk"><i></i>⏰ Me réveiller quand je quitte l'AFK</label>
+      </div>
+      <div class="fx-row">
+        <label class="switch"><input type="checkbox" data-path="fx.sleepUnlimited"><i></i>♾️ Dodo sans limite de temps</label>
+      </div>
+      <div class="avatar-row">
+        <img class="avatar" id="avatarPreview" src="/assets/sleep/face.svg" alt="Tête du personnage">
+        <div class="row">
+          <label class="btn sm" for="avatarFile">📷 Choisir une photo de ta tête</label>
+          <input type="file" id="avatarFile" accept="image/*" hidden>
+          <button class="btn sm danger" id="avatarRemove" hidden>Retirer</button>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <label class="f">Durée du dodo (lancé à la main) : <b id="sleepSecVal">30 s</b>
+          <input type="range" min="5" max="300" step="5" data-path="fx.sleepSec" data-type="number">
+        </label>
+        <label class="f">Taille du lit : <b id="sleepSizeVal">320 px</b>
+          <input type="range" min="160" max="1200" step="10" data-path="fx.sleepSize" data-type="number">
+        </label>
+        <label class="f">Position du lit (décalage depuis la gauche) : <b id="sleepLeftVal">0 px</b>
+          <input type="range" min="0" max="200" step="5" data-path="fx.sleepLeft" data-type="number">
+        </label>
+      </div>
+      <p class="hint">Photo recadrée en carré (visage plutôt en haut et au centre). En mode AFK automatique, le personnage dort tant que tu restes en AFK. Sans limite de temps, seul « Réveiller » (ou la sortie de l'AFK si l'option est cochée) le réveille.</p>
 
       <div class="fx-row" style="margin-top:18px; padding-top:16px; border-top:1px solid var(--line)">
         <label class="switch"><input type="checkbox" data-path="fx.matrix"><i></i>🟩 Pluie Matrix en continu</label>
@@ -647,6 +683,13 @@
     $('#bgVal').textContent = Math.round(state.border.glow * 100) + ' %';
     $('#brVal').textContent = state.border.radius + ' px';
     $('#petSizeVal').textContent = state.fx.petSize + ' px';
+    $('#sleepSecVal').textContent = state.fx.sleepUnlimited ? 'sans limite' : state.fx.sleepSec + ' s';
+    $('[data-path="fx.sleepSec"]').disabled = state.fx.sleepUnlimited;
+    $('#sleepSizeVal').textContent = state.fx.sleepSize + ' px';
+    $('#sleepLeftVal').textContent = state.fx.sleepLeft + ' px';
+    const av = state.avatar.version ? '/api/avatar?v=' + state.avatar.version : '/assets/sleep/face.svg';
+    if ($('#avatarPreview').getAttribute('src') !== av) $('#avatarPreview').src = av;
+    $('#avatarRemove').hidden = !state.avatar.version;
     $('#mxOpVal').textContent = Math.round(state.fx.matrixOpacity * 100) + ' %';
     $('#mxSpVal').textContent = Number(state.fx.matrixSpeed).toFixed(1) + '×';
     $('#pwVal').textContent = state.style.panelWidth ? state.style.panelWidth + ' px' : 'Auto';
@@ -767,6 +810,28 @@
 
   $('#pos').addEventListener('click', (e) => e.target.dataset.pos && patch('style.position', e.target.dataset.pos));
   $$('[data-auto]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); patch(b.dataset.auto, 0); }));
+  // Photo du personnage « dodo » : recadrage carré 320 px fait ici, envoyée en PNG
+  $('#avatarFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    let img;
+    try { img = await createImageBitmap(file); } catch { return toast('Image illisible'); }
+    const s = Math.min(img.width, img.height);
+    const sx = (img.width - s) / 2;
+    const sy = (img.height - s) * 0.3; // portrait : le visage est souvent dans le haut
+    const c = document.createElement('canvas');
+    c.width = c.height = 320;
+    c.getContext('2d').drawImage(img, sx, sy, s, s, 0, 0, 320, 320);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+    const res = await fetch('/api/avatar', { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: blob }).catch(() => null);
+    toast(res && res.ok ? 'Photo enregistrée' : 'Envoi de la photo impossible');
+  });
+  $('#avatarRemove').onclick = async () => {
+    await fetch('/api/avatar', { method: 'DELETE' }).catch(() => null);
+    toast('Photo retirée');
+  };
+
   $('#alarmTest').addEventListener('click', () => send({ type: 'fx', effect: 'alarm' }));
   $$('[data-fx]').forEach((b) => b.addEventListener('click', () => send({ type: 'fx', effect: b.dataset.fx })));
   function birthday() {
@@ -831,7 +896,7 @@
       $('#quickList').append(q);
     });
   }
-  // Profils : réglages globaux + mode de travail, enregistrés côté serveur (hors timer et texte du message)
+  // Profils : réglages globaux + mode de travail, enregistrés côté serveur (message affiché compris, hors timer)
   const PROFILE_KEYS = ['modes', 'style', 'visibility', 'fx', 'border', 'veil', 'tint', 'alarm', 'message'];
   const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
   const stable = (v) => isObj(v)
@@ -840,17 +905,13 @@
   function currentProfileSig() {
     const d = {};
     for (const k of PROFILE_KEYS) d[k] = { ...state[k] };
-    delete d.message.text;
     d.mode = state.mode;
     return stable(d);
   }
   function profileSig(p) {
     // complète avec les valeurs actuelles absentes du profil, pour ne pas le marquer « modifié » à tort
     const d = {};
-    for (const k of PROFILE_KEYS) {
-      d[k] = { ...state[k], ...(p.data[k] || {}) };
-      delete d[k].text;
-    }
+    for (const k of PROFILE_KEYS) d[k] = { ...state[k], ...(p.data[k] || {}) };
     d.mode = p.data.mode || state.mode;
     return stable(d);
   }
@@ -994,6 +1055,7 @@
     else if (e.key === 'r' || e.key === 'R') send({ type: 'timer', action: 'reset' });
     else if (e.key === 'c' || e.key === 'C') send({ type: 'fx', effect: 'cat' });
     else if (e.key === 'd' || e.key === 'D') send({ type: 'fx', effect: 'dog' });
+    else if (e.key === 's' || e.key === 'S') send({ type: 'fx', effect: 'sleep' });
     else if (e.key === 'm' || e.key === 'M') send({ type: 'fx', effect: 'matrix' });
     else if (e.key === 'f' || e.key === 'F') send({ type: 'fx', effect: 'fireworks' });
     else if (['1', '2', '3', '4'].includes(e.key)) send({ type: 'mode', mode: MODE_KEYS[e.key - 1] });
