@@ -11,6 +11,7 @@
 @property --accent   { syntax: '<color>'; inherits: true; initial-value: #38e1ff; }
 @property --accent-2 { syntax: '<color>'; inherits: true; initial-value: #5b5cff; }
 @property --deep     { syntax: '<color>'; inherits: true; initial-value: #04101c; }
+@property --edge-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 
 :root {
   --font-display: 'Orbitron', 'Chakra Petch', system-ui, sans-serif;
@@ -406,6 +407,39 @@ body.preview {
 @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-1.8px); } }
 @keyframes zRise { 0% { opacity: 0; transform: translate(0,0); } 20% { opacity: 1; } 70% { opacity: 0; transform: translate(4px,-9px); } 100% { opacity: 0; } }
 
+/* ---------- contour global de l'écran (couleurs du mode) ---------- */
+.edge {
+  position: absolute; inset: 0; pointer-events: none;
+  opacity: 0; transition: opacity .7s ease;
+  --edge-w: 8px; --edge-r: 0px; --edge-glow: .6; --edge-dur: 6s;
+}
+.edge.on { opacity: 1; }
+.edge-ring, .edge-halo > div {
+  position: absolute; inset: 0;
+  border-radius: var(--edge-r);
+  padding: var(--edge-w);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2), var(--accent));
+}
+/* halo : anneau plus large flouté (le flou est sur le parent pour ne pas être coupé par le masque) */
+.edge-halo { position: absolute; inset: 0; filter: blur(calc(var(--edge-w) * .8 + 10px)); opacity: var(--edge-glow); }
+.edge-halo > div { padding: calc(var(--edge-w) * 2 + 14px); }
+/* flow : une lumière fait le tour de l'écran sur un anneau de base atténué */
+.edge[data-style="flow"] .edge-ring, .edge[data-style="flow"] .edge-halo > div {
+  background:
+    conic-gradient(from var(--edge-angle), var(--accent), color-mix(in oklab, var(--accent-2) 80%, white), transparent 22%, transparent 50%, var(--accent) 72%, var(--accent-2) 86%, var(--accent)),
+    color-mix(in oklab, var(--accent) 32%, transparent);
+  animation: edgeSpin var(--edge-dur) linear infinite;
+}
+/* pulse : le contour respire */
+.edge[data-style="pulse"] .edge-ring, .edge[data-style="pulse"] .edge-halo { animation: edgePulse var(--edge-dur) ease-in-out infinite; }
+@keyframes edgeSpin { to { --edge-angle: 360deg; } }
+@keyframes edgePulse { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+.edge[data-style="pulse"] .edge-halo { animation-name: edgePulseHalo; }
+@keyframes edgePulseHalo { 0%,100% { opacity: calc(var(--edge-glow) * .3); } 50% { opacity: var(--edge-glow); } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
@@ -413,6 +447,7 @@ body.preview {
 </head>
 <body>
 <div class="stage booting" id="stage" data-mode="focus" data-pos="bottom-left" data-side="left">
+  <div class="edge" id="edge" data-style="flow"><div class="edge-halo"><div></div></div><div class="edge-ring"></div></div>
   <div class="rig" id="rig">
     <div class="sizer" id="sizer">
       <div class="aura"></div>
@@ -487,7 +522,9 @@ body.preview {
       messageSize: 30, uppercase: true, position: 'bottom-left', textColor: '#ffffff',
       panelWidth: 0, panelHeight: 0
     },
-    visibility: { panel: true, mode: true, timer: true, message: true }
+    visibility: { panel: true, mode: true, timer: true, message: true },
+    border: { enabled: false, thickness: 8, style: 'flow', speed: 1, glow: 0.6, radius: 0,
+              modes: { focus: true, help: true, afk: true, open: true } }
   };
   const POSITIONS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
@@ -516,7 +553,7 @@ body.preview {
   const root = document.documentElement;
 
   const params = new URLSearchParams(location.search);
-  const ONLY = ['timer', 'mode', 'message', 'fx'].includes(params.get('only')) ? params.get('only') : null;
+  const ONLY = ['timer', 'mode', 'message', 'fx', 'border'].includes(params.get('only')) ? params.get('only') : null;
   if (params.get('preview') === '1') document.body.classList.add('preview');
 
   /* ---------------- fonts ---------------- */
@@ -605,6 +642,19 @@ body.preview {
     } else {
       setText(labelEl, label, true); setText(subEl, sub, true);
     }
+
+    /* contour global */
+    const bd = S.border;
+    const edgeOn = bd.enabled === true && (ONLY === null || ONLY === 'border') && !(isObj(bd.modes) && bd.modes[mode] === false);
+    const edgeStyle = ['flow', 'pulse', 'static'].includes(bd.style) ? bd.style : 'flow';
+    const edgeEl = $('edge');
+    edgeEl.classList.toggle('on', edgeOn);
+    edgeEl.dataset.style = edgeStyle;
+    edgeEl.style.setProperty('--edge-w', clamp(num(bd.thickness, 8), 1, 60) + 'px');
+    edgeEl.style.setProperty('--edge-r', clamp(num(bd.radius, 0), 0, 80) + 'px');
+    edgeEl.style.setProperty('--edge-glow', String(clamp(num(bd.glow, 0.6), 0, 1)));
+    const speed = clamp(num(bd.speed, 1), 0.2, 4);
+    edgeEl.style.setProperty('--edge-dur', ((edgeStyle === 'pulse' ? 2.4 : 6) / speed).toFixed(2) + 's');
 
     /* timer label */
     setText(timerLabelEl, S.timer.label != null ? String(S.timer.label) : '', false);

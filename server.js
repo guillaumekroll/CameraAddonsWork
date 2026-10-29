@@ -4,12 +4,14 @@
 // - API HTTP simple (/api/...) pour Stream Deck / raccourcis
 
 const http = require('http');
+const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 
 const PORT = Number(process.env.PORT) || 3000;
-const HOST = process.env.HOST || '127.0.0.1';
+// 0.0.0.0 = accessible depuis le réseau local (tablette, téléphone). HOST=127.0.0.1 pour limiter à ce PC.
+const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 // Toute la configuration est sauvegardée dans ce fichier JSON (STATE_FILE pour le changer)
 const STATE_FILE = path.resolve(process.env.STATE_FILE || path.join(__dirname, 'data', 'state.json'));
@@ -50,6 +52,16 @@ const DEFAULT_STATE = {
     matrixOpacity: 0.35,
     matrixColor: '#00ff66',
     matrixSpeed: 1,
+  },
+  // Contour global de l'écran, aux couleurs du mode
+  border: {
+    enabled: false,
+    thickness: 8, // px
+    style: 'flow', // flow (lumière qui tourne) | pulse | static
+    speed: 1,
+    glow: 0.6, // halo 0..1
+    radius: 0, // coins arrondis (px)
+    modes: { focus: true, help: true, afk: true, open: true }, // modes où le contour s'affiche
   },
   deck: { keySize: 96 }, // taille des touches du deck (px)
   // Listes réutilisables (partagées entre dashboard et deck)
@@ -164,6 +176,12 @@ function clampNumbers() {
   fx.matrixOpacity = Math.min(1, Math.max(0.05, Number(fx.matrixOpacity) || 0.35));
   fx.matrixSpeed = Math.min(3, Math.max(0.2, Number(fx.matrixSpeed) || 1));
   if (!/^#[0-9a-f]{6}$/i.test(fx.matrixColor)) fx.matrixColor = '#00ff66';
+  const b = state.border;
+  b.thickness = Math.min(60, Math.max(1, Math.round(Number(b.thickness) || 8)));
+  b.speed = Math.min(4, Math.max(0.2, Number(b.speed) || 1));
+  b.glow = Math.min(1, Math.max(0, Number(b.glow) || 0));
+  b.radius = Math.min(80, Math.max(0, Math.round(Number(b.radius) || 0)));
+  if (!['flow', 'pulse', 'static'].includes(b.style)) b.style = 'flow';
   state.deck.keySize = Math.min(220, Math.max(56, Math.round(Number(state.deck.keySize) || 96)));
   // listes : chaînes non vides, uniques, longueur et nombre bornés
   const list = (arr, maxLen, maxItems) =>
@@ -428,10 +446,36 @@ setInterval(() => {
   }
 }, 15000);
 
+// Adresses IPv4 du PC sur le réseau local
+function lanAddresses() {
+  return Object.values(os.networkInterfaces())
+    .flat()
+    .filter((i) => i && i.family === 'IPv4' && !i.internal)
+    .map((i) => i.address);
+}
+
+function onListenError(err) {
+  if (err.code === 'EADDRINUSE') console.error(`\n  Le port ${PORT} est déjà utilisé : un serveur tourne déjà ? (PORT=3001 npm start pour un autre port)\n`);
+  else console.error(err);
+  process.exit(1);
+}
+server.on('error', onListenError);
+wss.on('error', onListenError); // ws relaie aussi l'erreur d'écoute du serveur HTTP
+
 server.listen(PORT, HOST, () => {
-  const base = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`;
-  console.log(`\n  Dashboard : ${base}/`);
-  console.log(`  Overlay   : ${base}/overlay   (Source Navigateur OBS, 1920x1080)`);
-  console.log(`  Deck      : ${base}/deck      (panneau de boutons, tablette / téléphone)`);
-  console.log(`  Config    : ${STATE_FILE}\n`);
+  const local = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`;
+  console.log(`\n  Sur ce PC`);
+  console.log(`    Dashboard : ${local}/`);
+  console.log(`    Overlay   : ${local}/overlay   (Source Navigateur OBS, 1920x1080)`);
+  console.log(`    Deck      : ${local}/deck`);
+  if (HOST === '0.0.0.0') {
+    const ips = lanAddresses();
+    if (ips.length) {
+      console.log(`\n  Depuis le réseau local (tablette, téléphone, autre PC)`);
+      for (const ip of ips) console.log(`    http://${ip}:${PORT}/   ·   Deck : http://${ip}:${PORT}/deck`);
+    }
+  } else {
+    console.log(`\n  (accès limité à ce PC — retirer HOST=${HOST} pour ouvrir au réseau local)`);
+  }
+  console.log(`\n  Config    : ${STATE_FILE}\n`);
 });

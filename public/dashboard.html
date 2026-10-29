@@ -343,6 +343,43 @@
       <datalist id="fontList"></datalist>
     </section>
 
+    <!-- CONTOUR -->
+    <section>
+      <h2>Contour de l'écran <span class="grow"></span>
+        <label class="switch"><input type="checkbox" data-path="border.enabled"><i></i>Activé</label>
+      </h2>
+      <div class="f" style="font-size:12px;color:var(--muted)">Afficher dans les modes
+        <div class="row" style="margin-top:8px; gap:16px">
+          <label class="switch"><input type="checkbox" data-path="border.modes.focus"><i></i><span style="color:var(--c-focus)">Focus</span></label>
+          <label class="switch"><input type="checkbox" data-path="border.modes.help"><i></i><span style="color:var(--c-help)">Help</span></label>
+          <label class="switch"><input type="checkbox" data-path="border.modes.afk"><i></i><span style="color:var(--c-afk)">AFK</span></label>
+          <label class="switch"><input type="checkbox" data-path="border.modes.open"><i></i><span style="color:var(--c-open)">Open</span></label>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:14px">
+        <label class="f">Animation
+          <select data-path="border.style">
+            <option value="flow">Flux · lumière qui fait le tour</option>
+            <option value="pulse">Pulsation · le contour respire</option>
+            <option value="static">Fixe · dégradé sans animation</option>
+          </select>
+        </label>
+        <label class="f">Épaisseur : <b id="bwVal">8 px</b>
+          <input type="range" min="1" max="60" step="1" data-path="border.thickness" data-type="number">
+        </label>
+        <label class="f">Vitesse : <b id="bsVal">1.0×</b>
+          <input type="range" min="0.2" max="4" step="0.1" data-path="border.speed" data-type="number">
+        </label>
+        <label class="f">Halo lumineux : <b id="bgVal">60 %</b>
+          <input type="range" min="0" max="1" step="0.05" data-path="border.glow" data-type="number">
+        </label>
+        <label class="f">Coins arrondis : <b id="brVal">0 px</b>
+          <input type="range" min="0" max="80" step="1" data-path="border.radius" data-type="number">
+        </label>
+      </div>
+      <p class="hint">La couleur suit automatiquement le mode actif (et sa couleur personnalisée). Source OBS dédiée : <code>/overlay?only=border</code></p>
+    </section>
+
     <section>
       <h2>Sauvegarde</h2>
       <p class="hint" style="margin-top:0">Tous les réglages sont enregistrés automatiquement dans <code id="cfgPath">data/state.json</code> (copie de sécurité : <code>state.backup.json</code>).</p>
@@ -453,6 +490,10 @@
 
     $('#scaleVal').textContent = Number(state.style.scale).toFixed(2) + '×';
     $('#msgSizeVal').textContent = state.style.messageSize + ' px';
+    $('#bwVal').textContent = state.border.thickness + ' px';
+    $('#bsVal').textContent = Number(state.border.speed).toFixed(1) + '×';
+    $('#bgVal').textContent = Math.round(state.border.glow * 100) + ' %';
+    $('#brVal').textContent = state.border.radius + ' px';
     $('#petSizeVal').textContent = state.fx.petSize + ' px';
     $('#mxOpVal').textContent = Math.round(state.fx.matrixOpacity * 100) + ' %';
     $('#mxSpVal').textContent = Number(state.fx.matrixSpeed).toFixed(1) + '×';

@@ -11,7 +11,9 @@ npm start
 - Deck (grosses touches façon Stream Deck, tablette / téléphone) : http://localhost:3000/deck
 - Overlay : http://localhost:3000/overlay
 
-Variables : `PORT` (défaut 3000), `HOST` (défaut `127.0.0.1` ; mettre `0.0.0.0` pour piloter depuis un autre appareil du réseau, ex. tablette).
+Le serveur est accessible depuis le réseau local : au démarrage, il affiche les adresses à ouvrir sur la tablette / le téléphone (ex. `http://192.168.1.x:3000/deck`).
+
+Variables : `PORT` (défaut 3000), `HOST` (défaut `0.0.0.0` = réseau local ; `HOST=127.0.0.1` pour limiter à ce PC).
 
 ## OBS
 
@@ -23,6 +25,14 @@ Une source par élément (pour les positionner librement dans OBS) :
 ## Taille du panneau
 
 Dans le dashboard (section Style) : largeur et hauteur du panneau mode/timer en px, ou « Auto » (taille selon le contenu). En largeur fixe, le timer et le libellé rétrécissent pour tenir. L'« échelle » agit en plus, sur l'ensemble.
+
+## Contour de l'écran
+
+Dashboard → **Contour de l'écran** : un cadre animé autour de tout l'overlay, aux couleurs du mode actif (transition fluide au changement de mode).
+- Activé / désactivé, et choix des modes où il s'affiche (ex. uniquement FOCUS TIME).
+- Animation : **Flux** (lumière qui fait le tour), **Pulsation**, ou **Fixe**.
+- Épaisseur (1–60 px), vitesse, halo lumineux, coins arrondis.
+- Source OBS dédiée : `/overlay?only=border`. Touche « Contour écran » dans le Deck.
 
 ## Effets
 
@@ -38,7 +48,7 @@ Emojis animés : [Noto Emoji](https://googlefonts.github.io/noto-emoji-animation
 
 ## Deck (tablette / téléphone)
 
-`/deck` : grille de grosses touches (modes, timer, effets, affichage, messages enregistrés) avec retour visuel de l'état. Pour l'ouvrir depuis un autre appareil, lancer le serveur avec `HOST=0.0.0.0 npm start` puis ouvrir `http://<ip-du-mac>:3000/deck`. Astuce : « Ajouter à l'écran d'accueil » pour l'avoir en plein écran.
+`/deck` : grille de grosses touches (modes, timer, effets, affichage, messages enregistrés) avec retour visuel de l'état. Depuis un autre appareil du même réseau, ouvrir l'adresse affichée au démarrage (`http://<ip-du-mac>:3000/deck`). Astuce : « Ajouter à l'écran d'accueil » pour l'avoir en plein écran.
 
 ## Raccourcis du dashboard
 
