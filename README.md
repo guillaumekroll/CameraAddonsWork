@@ -48,7 +48,7 @@ Section « Effets » du dashboard :
 - **Chatons / chiens** qui apparaissent au hasard (intervalle min–max en secondes, taille réglable), ou à la demande.
 - **Anniversaire** : feu d'artifice, gâteaux qui surgissent de tous les côtés et au centre, bannière « JOYEUX ANNIVERSAIRE » + prénom (~13 s).
 - **Feu d'artifice** seul (8 s).
-- **Dodo** : un personnage en pyjama, avec la photo de ta tête (📷 dans le dashboard, recadrée en carré), arrive à pied, saute dans un lit, met son bonnet de nuit et dort (lit en bas à gauche, décalage 0–200 px réglable) avec des « zZz » qui s'envolent. À la demande (durée réglable ou sans limite de temps, bouton « Réveiller ») ou automatiquement en passant en AFK. Option « Me réveiller quand je quitte l'AFK » (sinon le personnage finit son dodo). La photo est enregistrée dans `data/avatar.png`.
+- **Dodo** : un personnage en pyjama, avec la photo de ta tête (📷 dans le dashboard, dans un rond sur fond jaune ou en « image seule » pour un PNG détouré), arrive à pied, saute dans un lit, met son bonnet de nuit et dort (lit en bas à gauche, décalage 0–200 px réglable) avec des « zZz » qui s'envolent. À la demande (durée réglable ou sans limite de temps, bouton « Réveiller ») ou automatiquement en passant en AFK. Option « Me réveiller quand je quitte l'AFK » (sinon le personnage finit son dodo). La photo est enregistrée dans `data/avatar.png`.
 - **Pluie Matrix** en continu (opacité, vitesse, couleur) ou en rafale de 9 s. Elle passe derrière le panneau.
 
 Source OBS dédiée aux effets : `/overlay?only=fx`. Test sans dashboard : `/overlay?preview=1&fx=cat` (ou `dog`, `matrix`, `fireworks`, `birthday&name=Alice`, `sleep`).

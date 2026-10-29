@@ -65,6 +65,7 @@ const DEFAULT_STATE = {
     sleepSec: 30, // durée d'un dodo lancé à la main
     sleepSize: 320, // largeur du lit (px)
     sleepLeft: 0, // décalage du lit depuis le bord gauche (px)
+    sleepFace: 'circle', // circle (rond sur fond) | image (image seule, idéal pour un PNG détouré)
   },
   avatar: { version: 0 }, // photo de la tête du personnage (0 = visage par défaut)
   // Contour global de l'écran, aux couleurs du mode
@@ -222,6 +223,7 @@ function clampNumbers() {
   if (!/^#[0-9a-f]{6}$/i.test(fx.matrixColor)) fx.matrixColor = '#00ff66';
   fx.sleepSec = Math.min(600, Math.max(5, Math.round(Number(fx.sleepSec) || 30)));
   fx.sleepSize = Math.min(1200, Math.max(160, Math.round(Number(fx.sleepSize) || 320)));
+  if (!['circle', 'image'].includes(fx.sleepFace)) fx.sleepFace = 'circle';
   fx.sleepLeft = Math.min(200, Math.max(0, Math.round(Number(fx.sleepLeft) || 0)));
   if (state.avatar.version && !fs.existsSync(AVATAR_FILE)) state.avatar.version = 0;
   const m = state.message;

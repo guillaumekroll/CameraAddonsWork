@@ -174,7 +174,8 @@
   .preview iframe { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; pointer-events: none; }
 
   .avatar-row { display: flex; align-items: center; gap: 14px; margin-top: 10px; }
-  .avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; background: #ffcc80; box-shadow: 0 0 0 2px var(--line); flex: none; }
+  .avatar { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; object-position: 50% 30%; background: #ffcc80; box-shadow: 0 0 0 2px var(--line); flex: none; }
+  .avatar.free { border-radius: 8px; object-fit: contain; object-position: 50% 50%; background: repeating-conic-gradient(#1d2230 0 25%, #151922 0 50%) 0 0 / 12px 12px; }
   .fx-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
   a.btn { text-decoration: none; }
   .hint { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
@@ -368,6 +369,10 @@
           <label class="btn sm" for="avatarFile">📷 Choisir une photo de ta tête</label>
           <input type="file" id="avatarFile" accept="image/*" hidden>
           <button class="btn sm danger" id="avatarRemove" hidden>Retirer</button>
+          <select data-path="fx.sleepFace" style="width:auto">
+            <option value="circle">Tête dans un rond (fond jaune)</option>
+            <option value="image">Image seule (PNG détouré conseillé)</option>
+          </select>
         </div>
       </div>
       <div class="grid2" style="margin-top:12px">
@@ -381,7 +386,7 @@
           <input type="range" min="0" max="200" step="5" data-path="fx.sleepLeft" data-type="number">
         </label>
       </div>
-      <p class="hint">Photo recadrée en carré (visage plutôt en haut et au centre). En mode AFK automatique, le personnage dort tant que tu restes en AFK. Sans limite de temps, seul « Réveiller » (ou la sortie de l'AFK si l'option est cochée) le réveille.</p>
+      <p class="hint">En rond, la photo est recadrée (visage plutôt en haut et au centre). En « image seule », elle est affichée entière, sans rond ni fond : idéal avec un PNG à fond transparent. En mode AFK automatique, le personnage dort tant que tu restes en AFK. Sans limite de temps, seul « Réveiller » (ou la sortie de l'AFK si l'option est cochée) le réveille.</p>
 
       <div class="fx-row" style="margin-top:18px; padding-top:16px; border-top:1px solid var(--line)">
         <label class="switch"><input type="checkbox" data-path="fx.matrix"><i></i>🟩 Pluie Matrix en continu</label>
@@ -690,6 +695,7 @@
     const av = state.avatar.version ? '/api/avatar?v=' + state.avatar.version : '/assets/sleep/face.svg';
     if ($('#avatarPreview').getAttribute('src') !== av) $('#avatarPreview').src = av;
     $('#avatarRemove').hidden = !state.avatar.version;
+    $('#avatarPreview').classList.toggle('free', state.fx.sleepFace === 'image');
     $('#mxOpVal').textContent = Math.round(state.fx.matrixOpacity * 100) + ' %';
     $('#mxSpVal').textContent = Number(state.fx.matrixSpeed).toFixed(1) + '×';
     $('#pwVal').textContent = state.style.panelWidth ? state.style.panelWidth + ' px' : 'Auto';
@@ -810,19 +816,19 @@
 
   $('#pos').addEventListener('click', (e) => e.target.dataset.pos && patch('style.position', e.target.dataset.pos));
   $$('[data-auto]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); patch(b.dataset.auto, 0); }));
-  // Photo du personnage « dodo » : recadrage carré 320 px fait ici, envoyée en PNG
+  // Photo du personnage « dodo » : réduite ici, envoyée en PNG
   $('#avatarFile').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     e.target.value = '';
     if (!file) return;
     let img;
     try { img = await createImageBitmap(file); } catch { return toast('Image illisible'); }
-    const s = Math.min(img.width, img.height);
-    const sx = (img.width - s) / 2;
-    const sy = (img.height - s) * 0.3; // portrait : le visage est souvent dans le haut
+    // image entière réduite à 480 px max (transparence conservée) ; le recadrage en rond se fait à l'affichage
+    const k = Math.min(1, 480 / Math.max(img.width, img.height));
     const c = document.createElement('canvas');
-    c.width = c.height = 320;
-    c.getContext('2d').drawImage(img, sx, sy, s, s, 0, 0, 320, 320);
+    c.width = Math.round(img.width * k);
+    c.height = Math.round(img.height * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
     const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
     const res = await fetch('/api/avatar', { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: blob }).catch(() => null);
     toast(res && res.ok ? 'Photo enregistrée' : 'Envoi de la photo impossible');

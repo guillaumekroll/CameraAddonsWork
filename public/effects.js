@@ -57,7 +57,7 @@
   // ---------- Config ----------
   let cfg = {
     cats: false, dogs: false, petMinSec: 30, petMaxSec: 90, petSize: 180,
-    sleepAfk: false, sleepWakeAfk: true, sleepUnlimited: false, sleepSec: 30, sleepSize: 320, sleepLeft: 0,
+    sleepAfk: false, sleepWakeAfk: true, sleepUnlimited: false, sleepSec: 30, sleepSize: 320, sleepLeft: 0, sleepFace: 'circle',
     matrix: false, matrixOpacity: 0.35, matrixColor: '#00ff66', matrixSpeed: 1,
   };
   const timers = { cat: 0, dog: 0 };
@@ -631,7 +631,9 @@
       .fx-sl svg { display: block; overflow: visible; }
       .fx-face { position: absolute; border-radius: 50%; overflow: hidden; background: #ffcc80;
         box-shadow: 0 0 0 3px #fff, 0 6px 14px rgba(0,0,0,.4); }
-      .fx-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      .fx-face img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
+      .fx-face.free { border-radius: 0; overflow: visible; background: none; box-shadow: none; }
+      .fx-face.free img { object-fit: contain; object-position: 50% 50%; filter: drop-shadow(0 6px 10px rgba(0,0,0,.45)); }
       .fx-walker .limb { transform-box: fill-box; transform-origin: 50% 8%; }
       .fx-walker.walking .legL, .fx-walker.walking .armR { animation: fxLimb .42s ease-in-out infinite alternate; }
       .fx-walker.walking .legR, .fx-walker.walking .armL { animation: fxLimb .42s ease-in-out infinite alternate-reverse; }
@@ -665,7 +667,7 @@
     }
     function faceEl(parent, d, left, top) {
       const f = document.createElement('div');
-      f.className = 'fx-face';
+      f.className = 'fx-face' + (cfg.sleepFace === 'image' ? ' free' : ''); // image seule : sans rond ni fond
       Object.assign(f.style, { width: d + 'px', height: d + 'px', left: left + 'px', top: top + 'px' });
       const img = document.createElement('img');
       img.src = face;
