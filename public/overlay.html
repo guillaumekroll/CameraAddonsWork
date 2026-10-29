@@ -355,6 +355,12 @@ body.preview {
   animation: ticker var(--tick-dur, 20s) linear infinite;
   will-change: transform;
 }
+.msg.ticker.rtl .msg-track { animation-direction: reverse; }
+.msg.clamp .msg-track {
+  display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--msg-lines, 2); line-clamp: var(--msg-lines, 2);
+  overflow: hidden;
+}
 .msg-track .sep { display: inline-block; padding: 0 .9em; color: var(--accent); }
 
 /* boot: hidden until first state */
@@ -554,7 +560,8 @@ body.preview {
       open:  { label: 'OPEN TO DISCUSS', subtitle: 'On discute, lance un sujet dans le chat', accent: '' }
     },
     timer: { running: false, endsAt: 0, remainingMs: 0, durationMs: 0, label: 'Session' },
-    message: { text: '' },
+    alarm: { enabled: true, sound: 'chime', volume: 0.7, repeat: 2, output: 'overlay' },
+    message: { text: '', maxLines: 2, scroll: 'auto', speed: 110, direction: 'left' },
     style: {
       fontDisplay: 'Orbitron', fontBody: 'Inter', fontWeight: 700, scale: 1,
       messageSize: 30, uppercase: true, position: 'bottom-left', textColor: '#ffffff',
@@ -629,7 +636,7 @@ body.preview {
   let firstApply = true;
   let swapTimer = 0;
   let lastClock = '', lastP = -1, wasDone = null;
-  let msgText = null, msgVisible = false;
+  let msgText = null, msgVisible = false, msgOpts = '';
 
   function apply(raw) {
     const prev = S;
@@ -725,6 +732,14 @@ body.preview {
     secMode.classList.toggle('off', !modeOn);
     secTimer.classList.toggle('off', !timerOn);
     setPanelShown(modeOn || timerOn);
+    const mo = msgOptions();
+    const optsKey = JSON.stringify(mo);
+    if (optsKey !== msgOpts) {
+      msgOpts = optsKey;
+      root.style.setProperty('--msg-lines', String(mo.maxLines));
+      msgEl.classList.toggle('rtl', mo.direction === 'right');
+      if (msgText) measureMessage();
+    }
     setMessage(text, msgOn);
 
     if (firstApply) {
@@ -774,6 +789,7 @@ body.preview {
     if (changed) { msgText = text; renderMessage(text); }
     if (!msgVisible) {
       msgEl.classList.remove('gone');
+      measureMessage(); // widths are only known once displayed
       void msgEl.offsetWidth;
       msgEl.classList.remove('off');
       replay(msgWrap, 'reveal');
@@ -793,27 +809,42 @@ body.preview {
     measureMessage();
   }
 
-  // Wraps on up to 2 lines; beyond that, switches to a seamless ticker.
+  function msgOptions() {
+    const m = (S && S.message) || {};
+    return {
+      maxLines: clamp(Math.round(num(m.maxLines, 2)), 1, 8),
+      scroll: ['auto', 'always', 'off'].includes(m.scroll) ? m.scroll : 'auto',
+      speed: clamp(num(m.speed, 110), 20, 400),
+      direction: m.direction === 'right' ? 'right' : 'left',
+    };
+  }
+
+  // Wraps on up to maxLines lines; beyond that, ticker (auto) or ellipsis (off). 'always' = ticker.
   function measureMessage() {
     if (!msgText) return;
-    const wasTicker = msgEl.classList.contains('ticker');
-    if (wasTicker) {
-      msgEl.classList.remove('ticker');
-      msgTrack.textContent = '';
-      const s = document.createElement('span'); s.textContent = msgText; msgTrack.appendChild(s);
-    }
+    const o = msgOptions();
+    msgEl.classList.remove('ticker', 'clamp');
+    msgTrack.textContent = '';
+    const s0 = document.createElement('span'); s0.textContent = msgText; msgTrack.appendChild(s0);
     const lh = parseFloat(getComputedStyle(msgTrack).lineHeight) || 36;
     const h = msgTrack.getBoundingClientRect().height;
-    if (h > lh * 2.3) {
-      msgEl.classList.add('ticker');
-      msgTrack.textContent = '';
-      for (let i = 0; i < 2; i++) {
-        const s = document.createElement('span'); s.textContent = msgText; msgTrack.appendChild(s);
-        const sep = document.createElement('span'); sep.className = 'sep'; sep.textContent = '\u25C6'; msgTrack.appendChild(sep);
-      }
-      const w = msgTrack.scrollWidth / 2;
-      msgTrack.style.setProperty('--tick-dur', Math.max(8, w / 110).toFixed(2) + 's');
+    const overflow = h > lh * (o.maxLines + 0.3);
+    if (o.scroll === 'off' || (o.scroll === 'auto' && !overflow)) {
+      msgEl.classList.toggle('clamp', overflow);
+      return;
     }
+    msgEl.classList.add('ticker');
+    msgTrack.textContent = '';
+    const addCopy = () => {
+      const s = document.createElement('span'); s.textContent = msgText; msgTrack.appendChild(s);
+      const sep = document.createElement('span'); sep.className = 'sep'; sep.textContent = '\u25C6'; msgTrack.appendChild(sep);
+    };
+    // a half-track (copies x n) must be at least as wide as the strip for a seamless loop
+    addCopy();
+    const one = msgTrack.scrollWidth;
+    const n = Math.max(1, Math.ceil((msgWrap.clientWidth || 1) / Math.max(1, one)));
+    for (let i = 1; i < n * 2; i++) addCopy();
+    msgTrack.style.setProperty('--tick-dur', Math.max(2, (one * n) / o.speed).toFixed(2) + 's');
   }
 
   /* ---------------- layout sync (scale footprint + message width) ---------------- */
@@ -866,11 +897,20 @@ body.preview {
     panel.classList.toggle('paused', !running && rem > 0);
     if (done !== wasDone) {
       panel.classList.toggle('done', done);
-      if (done && wasDone === false) replay(panel, 'burst-on');
+      if (done && wasDone === false) { replay(panel, 'burst-on'); playAlarm(false); }
       wasDone = done;
     }
   }
   setInterval(tick, 250);
+
+  // Son de fin : pas dans l'aperçu du dashboard, ni dans les sources ?only=mode|message|…
+  function playAlarm(test) {
+    const a = S && S.alarm;
+    if (!a || !window.TimerAlarm || params.get('preview') === '1') return;
+    if (ONLY !== null && ONLY !== 'timer') return;
+    if ((!test && a.enabled === false) || a.output === 'dashboard') return;
+    window.TimerAlarm.play(a);
+  }
 
   /* ---------------- WebSocket transport ---------------- */
   let ws = null, backoff = 1000, reconnectTimer = 0;
@@ -890,6 +930,7 @@ body.preview {
       try { d = JSON.parse(ev.data); } catch (e) { return; }
       if (d && d.type === 'state') window.__overlayLastState = d; // pour effects.js s'il charge après
       if (d) window.dispatchEvent(new CustomEvent('overlay:msg', { detail: d })); // effets (effects.js)
+      if (d && d.type === 'fx' && d.effect === 'alarm') playAlarm(true);
       if (!d || d.type !== 'state') return;
       try {
         if (typeof d.serverNow === 'number' && isFinite(d.serverNow)) offset = d.serverNow - Date.now();
@@ -911,5 +952,6 @@ body.preview {
 })();
 </script>
 <script src="/effects.js"></script>
+<script src="/alarm.js"></script>
 </body>
 </html>

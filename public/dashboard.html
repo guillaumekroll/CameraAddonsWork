@@ -136,6 +136,34 @@
   .quick .q .x { color: var(--muted); padding-left: 0; }
   .quick .q .x:hover { color: var(--danger); }
 
+  /* Profils */
+  .profiles { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 20px; }
+  .profiles > h2 { margin: 0; }
+  .profiles .list { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; min-width: 0; }
+  .profiles .empty { color: var(--muted); font-size: 13px; }
+  .prof { display: inline-flex; align-items: center; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); }
+  .prof button { background: none; border: 0; cursor: pointer; padding: 8px 10px; font-weight: 600; }
+  .prof .t { padding-left: 14px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prof .a { color: var(--muted); padding: 8px 6px; font-weight: 400; }
+  .prof .a:hover { color: var(--text); }
+  .prof .x:hover, .prof .x.confirm { color: var(--danger); }
+  .prof.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .prof.active .t { color: var(--accent); }
+  .prof { position: relative; cursor: grab; }
+  .prof.dragging { opacity: .4; }
+  .prof .grip { color: var(--muted); font-size: 11px; letter-spacing: -2px; padding-left: 10px; user-select: none; }
+  .prof .t { padding-left: 6px; }
+  .prof.drop-before::before, .prof.drop-after::after {
+    content: ""; position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 3px; background: var(--accent);
+  }
+  .prof.drop-before::before { left: -6px; }
+  .prof.drop-after::after { right: -6px; }
+  .profiles [hidden] { display: none; }
+  #profileResave.confirm { border-color: var(--c-help); color: var(--c-help); }
+  .prof .dirty { font-size: 11px; color: var(--c-help); font-weight: 500; padding-right: 4px; }
+  .profiles .new { display: flex; gap: 8px; }
+  .profiles .new input { width: 200px; }
+
   /* Position */
   .pos { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 140px; aspect-ratio: 16/9; padding: 6px; border-radius: 10px; border: 1px solid var(--line); background: #0e1118; }
   .pos button { border: 1px dashed #2f3547; border-radius: 6px; background: transparent; cursor: pointer; }
@@ -165,6 +193,17 @@
 </header>
 
 <main>
+  <!-- PROFILS -->
+  <section class="profiles">
+    <h2>Profils</h2>
+    <div class="list" id="profileList"></div>
+    <div class="new">
+      <input type="text" id="profileName" placeholder="Nom du profil" maxlength="40">
+      <button class="btn" id="profileSave">＋ Nouveau profil</button>
+      <button class="btn" id="profileResave" hidden></button>
+    </div>
+  </section>
+
   <div class="col">
     <!-- MODE -->
     <section>
@@ -212,6 +251,34 @@
           <input type="text" id="timerLabel" data-path="timer.label" placeholder="Session">
         </label>
       </div>
+      <h2 style="margin-top:16px">Son de fin <span class="grow"></span>
+        <button class="btn sm" id="alarmTest">🔔 Tester</button>
+        <label class="switch"><input type="checkbox" data-path="alarm.enabled"><i></i>Activé</label>
+      </h2>
+      <div class="grid2">
+        <label class="f">Son
+          <select data-path="alarm.sound">
+            <option value="chime">Carillon</option>
+            <option value="bell">Cloche</option>
+            <option value="beep">Bip (réveil)</option>
+            <option value="gong">Gong</option>
+          </select>
+        </label>
+        <label class="f">Joué sur
+          <select data-path="alarm.output">
+            <option value="overlay">Overlay (OBS)</option>
+            <option value="dashboard">Ce dashboard</option>
+            <option value="both">Les deux</option>
+          </select>
+        </label>
+        <label class="f">Volume : <b id="alarmVolVal">70 %</b>
+          <input type="range" min="0" max="1" step="0.05" data-path="alarm.volume" data-type="number">
+        </label>
+        <label class="f">Répétitions : <b id="alarmRepVal">2</b>
+          <input type="range" min="1" max="5" step="1" data-path="alarm.repeat" data-type="number">
+        </label>
+      </div>
+      <p class="hint">Dans OBS, coche « Contrôler l'audio via OBS » sur la source navigateur pour que le son parte dans le stream.</p>
       <p class="hint"><kbd>Espace</kbd> démarrer / pause · <kbd>R</kbd> reset · <kbd>1</kbd>–<kbd>4</kbd> changer de mode · <kbd>C</kbd> chaton · <kbd>D</kbd> chien · <kbd>M</kbd> Matrix · <kbd>F</kbd> feu d'artifice</p>
     </section>
 
@@ -226,6 +293,27 @@
         <button class="btn" id="msgClear">Effacer</button>
         <button class="btn" id="msgSave">☆ Enregistrer</button>
         <span class="hint" style="margin:0"><kbd>Ctrl</kbd>+<kbd>Entrée</kbd> pour afficher</span>
+      </div>
+      <div class="grid2" style="margin-top:14px">
+        <label class="f">Lignes autorisées : <b id="msgLinesVal">2</b>
+          <input type="range" min="1" max="8" step="1" data-path="message.maxLines" data-type="number">
+        </label>
+        <label class="f">Défilement
+          <select data-path="message.scroll">
+            <option value="auto">Auto · si le texte dépasse</option>
+            <option value="always">Toujours</option>
+            <option value="off">Jamais · texte coupé (…)</option>
+          </select>
+        </label>
+        <label class="f">Vitesse de défilement : <b id="msgSpeedVal">110 px/s</b>
+          <input type="range" min="20" max="400" step="10" data-path="message.speed" data-type="number">
+        </label>
+        <label class="f">Sens du défilement
+          <select data-path="message.direction">
+            <option value="left">← Vers la gauche</option>
+            <option value="right">→ Vers la droite</option>
+          </select>
+        </label>
       </div>
       <div class="quick" id="quickList"></div>
     </section>
@@ -448,13 +536,14 @@
       <h2>Intégration OBS</h2>
       <p class="hint" style="margin-top:0">Source → <b>Navigateur</b> · URL <code id="obsUrl2"></code> · Largeur <b>1920</b> · Hauteur <b>1080</b>.
         Pour séparer les éléments en plusieurs sources : ajoute <code>?only=timer</code>, <code>?only=mode</code> ou <code>?only=message</code>.</p>
-      <p class="hint">Stream Deck (action « Site web » en arrière-plan) : <code>/api/mode/focus</code>, <code>/api/timer/toggle</code>, <code>/api/timer/add?min=5</code>, <code>/api/message?text=…</code></p>
+      <p class="hint">Stream Deck (action « Site web » en arrière-plan) : <code>/api/mode/focus</code>, <code>/api/timer/toggle</code>, <code>/api/timer/add?min=5</code>, <code>/api/message?text=…</code>, <code>/api/profile/Nom</code></p>
     </section>
   </div>
 </main>
 
 <div class="toast" id="toast"></div>
 
+<script src="/alarm.js"></script>
 <script>
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
@@ -486,6 +575,8 @@
         offset = msg.serverNow - Date.now();
         state = msg.state;
         render();
+      } else if (msg.type === 'fx' && msg.effect === 'alarm') {
+        playAlarm(true);
       } else if (msg.type === 'clients') {
         // chaque dashboard ouvert embarque un aperçu qui compte comme overlay
         const obs = Math.max(0, msg.overlay - msg.dashboard);
@@ -544,6 +635,10 @@
 
     $('#scaleVal').textContent = Number(state.style.scale).toFixed(2) + '×';
     $('#msgSizeVal').textContent = state.style.messageSize + ' px';
+    $('#msgLinesVal').textContent = state.message.maxLines;
+    $('#alarmVolVal').textContent = Math.round(state.alarm.volume * 100) + ' %';
+    $('#alarmRepVal').textContent = state.alarm.repeat;
+    $('#msgSpeedVal').textContent = state.message.speed + ' px/s';
     $('#vOpVal').textContent = Math.round(state.veil.opacity * 100) + ' %';
     $('#vTintVal').textContent = Math.round(state.veil.tint * 100) + ' %';
     $('#tIntVal').textContent = Math.round(state.tint.intensity * 100) + ' %';
@@ -562,6 +657,7 @@
     if (document.activeElement !== $('#msgInput') && !$('#msgInput').dataset.dirty) $('#msgInput').value = state.message.text;
     $('#timerToggle').textContent = state.timer.running ? '❚❚ Pause' : '▶ Démarrer';
     renderQuick();
+    renderProfiles();
     migrateLocal();
     tick();
   }
@@ -576,6 +672,7 @@
     const p = (n) => String(n).padStart(2, '0');
     return h ? `${h}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`;
   }
+  let wasDone = null;
   function tick() {
     if (!state) return;
     const r = remaining();
@@ -584,8 +681,18 @@
     d.classList.toggle('paused', !state.timer.running && r > 0);
     d.classList.toggle('done', r <= 0);
     $('#timerBar').style.width = (state.timer.durationMs ? (r / state.timer.durationMs) * 100 : 0) + '%';
+    const done = r <= 0 && state.timer.durationMs > 0;
+    if (done && wasDone === false) playAlarm(false);
+    wasDone = done;
   }
   setInterval(tick, 200);
+
+  // Son de fin joué ici si la sortie est « dashboard » ou « les deux »
+  function playAlarm(test) {
+    const a = state && state.alarm;
+    if (!a || (!test && !a.enabled) || a.output === 'overlay') return;
+    window.TimerAlarm.play(a);
+  }
 
   // ---------- Construction UI ----------
   $('#fontList').innerHTML = FONTS.map((f) => `<option value="${f}">`).join('');
@@ -660,6 +767,7 @@
 
   $('#pos').addEventListener('click', (e) => e.target.dataset.pos && patch('style.position', e.target.dataset.pos));
   $$('[data-auto]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); patch(b.dataset.auto, 0); }));
+  $('#alarmTest').addEventListener('click', () => send({ type: 'fx', effect: 'alarm' }));
   $$('[data-fx]').forEach((b) => b.addEventListener('click', () => send({ type: 'fx', effect: b.dataset.fx })));
   function birthday() {
     send({ type: 'fx', effect: 'birthday', name: $('#bdName').value.trim() });
@@ -723,6 +831,140 @@
       $('#quickList').append(q);
     });
   }
+  // Profils : réglages globaux + mode de travail, enregistrés côté serveur (hors timer et texte du message)
+  const PROFILE_KEYS = ['modes', 'style', 'visibility', 'fx', 'border', 'veil', 'tint', 'alarm', 'message'];
+  const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  const stable = (v) => isObj(v)
+    ? '{' + Object.keys(v).filter((k) => v[k] !== undefined).sort().map((k) => JSON.stringify(k) + ':' + stable(v[k])).join(',') + '}'
+    : Array.isArray(v) ? '[' + v.map(stable).join(',') + ']' : JSON.stringify(v);
+  function currentProfileSig() {
+    const d = {};
+    for (const k of PROFILE_KEYS) d[k] = { ...state[k] };
+    delete d.message.text;
+    d.mode = state.mode;
+    return stable(d);
+  }
+  function profileSig(p) {
+    // complète avec les valeurs actuelles absentes du profil, pour ne pas le marquer « modifié » à tort
+    const d = {};
+    for (const k of PROFILE_KEYS) {
+      d[k] = { ...state[k], ...(p.data[k] || {}) };
+      delete d[k].text;
+    }
+    d.mode = p.data.mode || state.mode;
+    return stable(d);
+  }
+  let profileArmed = '', resaveArmed = false, resaveTimer = 0, dragName = '', renderPending = false;
+  function renderProfiles() {
+    if (dragName) { renderPending = true; return; } // pas de rendu pendant un glisser-déposer
+    const box = $('#profileList');
+    box.innerHTML = '';
+    const list = state.profiles || [];
+    const activeP = list.find((p) => p.name === state.activeProfile);
+    const dirty = !!activeP && profileSig(activeP) !== currentProfileSig();
+    const re = $('#profileResave');
+    if (!activeP) resaveArmed = false;
+    re.hidden = !activeP;
+    re.classList.toggle('primary', dirty && !resaveArmed);
+    re.classList.toggle('confirm', resaveArmed);
+    if (activeP) re.textContent = resaveArmed ? '✓ Confirmer : écraser « ' + activeP.name + ' » ?' : '💾 Réenregistrer « ' + activeP.name + ' »';
+    if (!list.length) {
+      box.innerHTML = '<span class="empty">Aucun profil : règle l\'overlay puis enregistre-le pour le rappeler en un clic.</span>';
+      return;
+    }
+    list.forEach((p, i) => {
+      const active = p === activeP;
+      const el = document.createElement('span');
+      el.className = 'prof' + (active ? ' active' : '');
+      el.draggable = true;
+      el.dataset.index = i;
+      const h = document.createElement('span');
+      h.className = 'grip'; h.textContent = '⋮⋮'; h.title = 'Glisser pour déplacer';
+      const t = document.createElement('button');
+      t.className = 't'; t.textContent = p.name; t.title = 'Appliquer « ' + p.name + ' »';
+      t.onclick = () => { send({ type: 'profile-apply', name: p.name }); toast('Profil « ' + p.name + ' » appliqué'); };
+      el.append(h, t);
+      if (active && dirty) {
+        const d = document.createElement('span');
+        d.className = 'dirty'; d.textContent = '● modifié';
+        el.append(d);
+      }
+      const x = document.createElement('button');
+      const armed = profileArmed === p.name;
+      x.className = 'a x' + (armed ? ' confirm' : ''); x.textContent = armed ? 'Supprimer ?' : '×'; x.title = 'Supprimer';
+      x.onclick = () => {
+        if (profileArmed !== p.name) { profileArmed = p.name; renderProfiles(); setTimeout(() => { if (profileArmed === p.name) { profileArmed = ''; renderProfiles(); } }, 3000); return; }
+        profileArmed = '';
+        send({ type: 'profile-delete', name: p.name });
+      };
+      el.append(x);
+      box.append(el);
+    });
+  }
+
+  // Glisser-déposer pour réordonner (l'ordre est aussi celui du deck)
+  const profileBox = $('#profileList');
+  const clearDrop = () => profileBox.querySelectorAll('.drop-before, .drop-after').forEach((e) => e.classList.remove('drop-before', 'drop-after'));
+  profileBox.addEventListener('dragstart', (e) => {
+    const el = e.target.closest('.prof');
+    if (!el) return;
+    dragName = state.profiles[el.dataset.index].name;
+    el.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragName);
+  });
+  profileBox.addEventListener('dragover', (e) => {
+    const el = e.target.closest('.prof');
+    if (!dragName || !el) return;
+    e.preventDefault();
+    const r = el.getBoundingClientRect();
+    const after = e.clientX > r.left + r.width / 2;
+    clearDrop();
+    el.classList.add(after ? 'drop-after' : 'drop-before');
+  });
+  profileBox.addEventListener('drop', (e) => {
+    const el = e.target.closest('.prof');
+    if (!dragName || !el) return;
+    e.preventDefault();
+    const from = state.profiles.findIndex((p) => p.name === dragName);
+    let to = Number(el.dataset.index) + (el.classList.contains('drop-after') ? 1 : 0);
+    if (from < to) to--; // l'élément déplacé libère sa place
+    if (from !== to) send({ type: 'profile-move', name: dragName, index: to });
+  });
+  profileBox.addEventListener('dragend', () => {
+    dragName = '';
+    clearDrop();
+    if (renderPending) { renderPending = false; renderProfiles(); }
+    else profileBox.querySelectorAll('.dragging').forEach((e) => e.classList.remove('dragging'));
+  });
+
+  function saveProfile() {
+    const name = $('#profileName').value.trim();
+    if (!name) return $('#profileName').focus();
+    // un profil existant ne s'écrase que via « Réenregistrer », sur le profil actif
+    if ((state.profiles || []).some((p) => p.name === name)) return toast('Le profil « ' + name + ' » existe déjà');
+    send({ type: 'profile-save', name });
+    $('#profileName').value = '';
+    toast('Profil « ' + name + ' » enregistré');
+  }
+  $('#profileSave').onclick = saveProfile;
+  $('#profileName').addEventListener('keydown', (e) => e.key === 'Enter' && saveProfile());
+  // Réenregistrement du profil actif : 2e clic pour confirmer (annulé après 4 s)
+  $('#profileResave').onclick = () => {
+    const name = state.activeProfile;
+    if (!name) return;
+    clearTimeout(resaveTimer);
+    if (!resaveArmed) {
+      resaveArmed = true;
+      resaveTimer = setTimeout(() => { resaveArmed = false; renderProfiles(); }, 4000);
+    } else {
+      resaveArmed = false;
+      send({ type: 'profile-save', name });
+      toast('Profil « ' + name + ' » réenregistré');
+    }
+    renderProfiles();
+  };
+
   $('#msgSave').onclick = () => {
     const text = msgInput.value.trim();
     if (!text) return;

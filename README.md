@@ -54,6 +54,10 @@ Source OBS dédiée aux effets : `/overlay?only=fx`. Test sans dashboard : `/ove
 
 Emojis animés : [Noto Emoji](https://googlefonts.github.io/noto-emoji-animation/) de Google, licence CC BY 4.0 (fichiers dans `public/assets/pets/` et `public/assets/party/`).
 
+## Profils
+
+Barre tout en haut du dashboard : règle l'overlay, donne un nom, « Enregistrer l'actuel ». Un clic sur un profil rappelle le mode de travail et tous les réglages (libellés des modes, style, visibilité, effets, contour, voile, glow, son de fin, options du message). Le timer et le texte du message ne sont pas touchés. « 💾 Réenregistrer » (à droite, mis en avant quand le profil actif est `● modifié`) remplace le profil actif par les réglages actuels, après un second clic de confirmation. Un nom déjà pris ne peut pas servir à créer un nouveau profil. Glisse un profil (poignée `⋮⋮`) pour changer son ordre, repris aussi sur le deck. Les profils apparaissent aussi en touches sur le deck.
+
 ## Deck (tablette / téléphone)
 
 `/deck` : grille de grosses touches (modes, timer, effets, affichage, messages enregistrés) avec retour visuel de l'état. Depuis un autre appareil du même réseau, ouvrir l'adresse affichée au démarrage (`http://<ip-du-mac>:3000/deck`). Astuce : « Ajouter à l'écran d'accueil » pour l'avoir en plein écran.
@@ -73,6 +77,8 @@ Emojis animés : [Noto Emoji](https://googlefonts.github.io/noto-emoji-animation
 | `/api/message?text=Hello` | message (vide = efface) |
 | `/api/fx/cat` · `dog` · `matrix` · `fireworks` | effet ponctuel |
 | `/api/fx/birthday?name=Alice` | anniversaire |
+| `/api/fx/alarm` | joue le son de fin de timer (test) |
+| `/api/profile/Nom` | applique un profil enregistré (espaces : `%20`) |
 | `/api/state` | état courant (JSON) |
 
 ## Sauvegarde de la configuration

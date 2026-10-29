@@ -28,7 +28,13 @@ const DEFAULT_STATE = {
     open: { label: 'OPEN TO DISCUSS', subtitle: 'On discute, lance un sujet dans le chat', accent: '' },
   },
   timer: { running: false, endsAt: null, remainingMs: 25 * 60000, durationMs: 25 * 60000, label: 'Session' },
-  message: { text: '' },
+  message: {
+    text: '',
+    maxLines: 2, // lignes autorisées avant défilement (ou coupure)
+    scroll: 'auto', // auto (si trop long) | always | off (coupé avec …)
+    speed: 110, // px/s
+    direction: 'left', // left | right
+  },
   style: {
     fontDisplay: 'Orbitron',
     fontBody: 'Inter',
@@ -80,7 +86,18 @@ const DEFAULT_STATE = {
     motion: true,
     modes: { focus: true, help: true, afk: true, open: true },
   },
-  deck: { keySize: 96 }, // taille des touches du deck (px)
+  // Son joué quand le compte à rebours arrive à zéro
+  alarm: {
+    enabled: true,
+    sound: 'chime', // chime | bell | beep | gong
+    volume: 0.7,
+    repeat: 2, // nombre de fois que le motif est joué
+    output: 'overlay', // overlay (OBS) | dashboard | both
+  },
+  deck: { keySize: 96 },
+  // Profils : instantanés nommés des réglages (voir PROFILE_KEYS), rappelables en un clic
+  profiles: [], // [{ name, data, savedAt }]
+  activeProfile: '', // dernier profil appliqué ou enregistré // taille des touches du deck (px)
   // Listes réutilisables (partagées entre dashboard et deck)
   library: {
     quickMessages: [],
@@ -88,7 +105,9 @@ const DEFAULT_STATE = {
   },
 };
 
-const FX_TRIGGERS = ['cat', 'dog', 'matrix', 'fireworks', 'birthday'];
+// Sections enregistrées dans un profil (+ le mode de travail). Ne touche pas au timer ni au texte du message.
+const PROFILE_KEYS = ['modes', 'style', 'visibility', 'fx', 'border', 'veil', 'tint', 'alarm', 'message'];
+const FX_TRIGGERS = ['cat', 'dog', 'matrix', 'fireworks', 'birthday', 'alarm']; // alarm = tester le son de fin
 
 // ---------- État ----------
 
@@ -193,6 +212,16 @@ function clampNumbers() {
   fx.matrixOpacity = Math.min(1, Math.max(0.05, Number(fx.matrixOpacity) || 0.35));
   fx.matrixSpeed = Math.min(3, Math.max(0.2, Number(fx.matrixSpeed) || 1));
   if (!/^#[0-9a-f]{6}$/i.test(fx.matrixColor)) fx.matrixColor = '#00ff66';
+  const m = state.message;
+  m.maxLines = Math.min(8, Math.max(1, Math.round(Number(m.maxLines) || 2)));
+  m.speed = Math.min(400, Math.max(20, Math.round(Number(m.speed) || 110)));
+  if (!['auto', 'always', 'off'].includes(m.scroll)) m.scroll = 'auto';
+  if (!['left', 'right'].includes(m.direction)) m.direction = 'left';
+  const a = state.alarm;
+  a.volume = Math.min(1, Math.max(0, Number(a.volume) || 0));
+  a.repeat = Math.min(5, Math.max(1, Math.round(Number(a.repeat) || 1)));
+  if (!['chime', 'bell', 'beep', 'gong'].includes(a.sound)) a.sound = 'chime';
+  if (!['overlay', 'dashboard', 'both'].includes(a.output)) a.output = 'overlay';
   const b = state.border;
   b.thickness = Math.min(60, Math.max(1, Math.round(Number(b.thickness) || 8)));
   b.speed = Math.min(4, Math.max(0.2, Number(b.speed) || 1));
@@ -211,6 +240,13 @@ function clampNumbers() {
     [...new Set(arr.filter((v) => typeof v === 'string').map((v) => v.trim().slice(0, maxLen)).filter(Boolean))].slice(0, maxItems);
   state.library.quickMessages = list(state.library.quickMessages, 500, 50);
   state.library.birthdayNames = list(state.library.birthdayNames, 40, 30);
+  const seen = new Set();
+  state.profiles = state.profiles
+    .filter((p) => isObject(p) && typeof p.name === 'string' && p.name.trim() && isObject(p.data))
+    .map((p) => ({ name: p.name.trim().slice(0, 40), data: p.data, savedAt: Number(p.savedAt) || 0 }))
+    .filter((p) => !seen.has(p.name) && seen.add(p.name))
+    .slice(0, 30);
+  if (!state.profiles.some((p) => p.name === state.activeProfile)) state.activeProfile = '';
   if (!['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(s.position)) s.position = 'bottom-left';
   if (!MODES.includes(state.mode)) state.mode = 'focus';
 }
@@ -300,6 +336,29 @@ function triggerFx(effect, name) {
   return true;
 }
 
+function profileData() {
+  const data = {};
+  for (const k of PROFILE_KEYS) data[k] = structuredClone(state[k]);
+  delete data.message.text;
+  data.mode = state.mode;
+  return data;
+}
+
+function applyProfile(name) {
+  const p = state.profiles.find((x) => x.name === name);
+  if (!p) return false;
+  const text = state.message.text;
+  // repart des valeurs par défaut : un profil ancien n'hérite pas des réglages du moment
+  for (const k of PROFILE_KEYS) state[k] = structuredClone(DEFAULT_STATE[k]);
+  const data = {};
+  for (const k of PROFILE_KEYS) if (isObject(p.data[k])) data[k] = p.data[k];
+  mergeKnown(state, data, DEFAULT_STATE);
+  state.message.text = text;
+  if (MODES.includes(p.data.mode)) state.mode = p.data.mode; // profils anciens sans mode : mode inchangé
+  state.activeProfile = p.name;
+  return true;
+}
+
 function commit() {
   clampNumbers();
   saveState();
@@ -322,6 +381,31 @@ function applyCommand(cmd) {
     case 'message':
       state.message.text = String(cmd.text ?? '');
       return true;
+    case 'profile-save': {
+      const name = String(cmd.name ?? '').trim().slice(0, 40);
+      if (!name) return false;
+      const entry = { name, data: profileData(), savedAt: Date.now() };
+      const i = state.profiles.findIndex((p) => p.name === name);
+      if (i >= 0) state.profiles[i] = entry;
+      else state.profiles.push(entry);
+      state.activeProfile = name;
+      return true;
+    }
+    case 'profile-apply':
+      return applyProfile(String(cmd.name ?? ''));
+    case 'profile-move': {
+      // déplace le profil `name` à la position `index` (0 = premier)
+      const from = state.profiles.findIndex((p) => p.name === cmd.name);
+      const to = Math.min(state.profiles.length - 1, Math.max(0, Math.round(Number(cmd.index) || 0)));
+      if (from < 0 || from === to) return false;
+      state.profiles.splice(to, 0, ...state.profiles.splice(from, 1));
+      return true;
+    }
+    case 'profile-delete': {
+      const before = state.profiles.length;
+      state.profiles = state.profiles.filter((p) => p.name !== cmd.name);
+      return state.profiles.length !== before;
+    }
     case 'reset-style':
       state.style = structuredClone(DEFAULT_STATE.style);
       return true;
@@ -368,6 +452,7 @@ function serveStatic(res, pathname) {
 //   /api/message?text=Hello   (text vide = efface)
 //   /api/fx/cat | dog | matrix | fireworks  (effet ponctuel)
 //   /api/fx/birthday?name=Alice
+//   /api/profile/Nom%20du%20profil  (applique un profil enregistré)
 //   /api/config  GET = télécharger la config, POST = importer
 function handleApi(req, res, url) {
   const parts = url.pathname.split('/').filter(Boolean); // ['api', ...]
@@ -383,6 +468,10 @@ function handleApi(req, res, url) {
     const min = Number(url.searchParams.get('min')) || 0;
     const sec = Number(url.searchParams.get('sec')) || 0;
     cmd = { type: 'timer', action: parts[2], ms: (min * 60 + sec) * 1000 };
+  } else if (parts[1] === 'profile') {
+    let name = '';
+    try { name = decodeURIComponent(parts.slice(2).join('/')); } catch {}
+    cmd = { type: 'profile-apply', name };
   } else if (parts[1] === 'message') cmd = { type: 'message', text: url.searchParams.get('text') || '' };
 
   if (!cmd || !applyCommand(cmd)) return sendJson(res, 400, { error: 'commande invalide' });
