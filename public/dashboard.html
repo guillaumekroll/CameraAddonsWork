@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlay Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #12151d;
+    --panel-2: #181c26;
+    --line: #232837;
+    --text: #e8ebf2;
+    --muted: #8a91a5;
+    --c-focus: #38e1ff;
+    --c-help: #ffb020;
+    --c-afk: #9aa3d6;
+    --c-open: #3ef0a4;
+    --danger: #ff4d6d;
+    --ok: #3ddc97;
+    --accent: var(--c-focus);
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-ui, sans-serif; }
+  body { min-height: 100vh; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 14px 24px; background: rgba(11,13,18,.85); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: .08em; text-transform: uppercase; }
+  header h1 span { color: var(--accent); transition: color .3s; }
+  .status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 3px rgba(255,77,109,.15); }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(61,220,151,.15); }
+  .spacer { flex: 1; }
+  .url { display: flex; align-items: center; gap: 8px; }
+  .url code { font: 12px "JetBrains Mono", monospace; padding: 6px 10px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
+
+  main {
+    display: grid; gap: 20px; padding: 24px;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    max-width: 1500px; margin: 0 auto;
+  }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  .col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; }
+  section > h2 {
+    display: flex; align-items: center; gap: 10px;
+    margin: 0 0 14px; font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+  }
+  section > h2 .grow { flex: 1; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px 14px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel-2); cursor: pointer; font-weight: 600; white-space: nowrap;
+    transition: border-color .15s, background .15s, transform .05s;
+  }
+  .btn:hover { border-color: #3a4156; }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #0b0d12; }
+  .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .btn.sm { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
+
+  /* Modes */
+  .modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 700px) { .modes { grid-template-columns: 1fr 1fr; } }
+  .mode-btn {
+    --c: var(--c-focus);
+    position: relative; text-align: left; padding: 16px; border-radius: 12px; cursor: pointer;
+    background: var(--panel-2); border: 1px solid var(--line); overflow: hidden;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .mode-btn::before { content: ""; position: absolute; inset: 0 0 auto; height: 3px; background: var(--c); opacity: .5; }
+  .mode-btn .k { font: 11px "JetBrains Mono", monospace; color: var(--muted); }
+  .mode-btn .name { display: block; margin-top: 6px; font-weight: 700; font-size: 15px; letter-spacing: .04em; }
+  .mode-btn.active { border-color: var(--c); box-shadow: 0 0 0 1px var(--c), 0 8px 30px -10px var(--c); }
+  .mode-btn.active::before { opacity: 1; }
+  .mode-btn.active .name { color: var(--c); }
+  details.edit { margin-top: 14px; }
+  details.edit summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .mode-edit { display: grid; grid-template-columns: 90px 1fr 1.4fr 110px; gap: 8px; align-items: center; margin-top: 10px; }
+  .mode-edit .tag { font-weight: 700; font-size: 12px; }
+
+  /* Champs */
+  label.f { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line);
+    background: #0e1118; color: var(--text); outline: none; transition: border-color .15s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 80px; }
+  .color { display: flex; gap: 6px; align-items: center; }
+  input[type=color] { width: 38px; height: 36px; padding: 2px; border-radius: 8px; border: 1px solid var(--line); background: #0e1118; cursor: pointer; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* Switch */
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--text); user-select: none; }
+  .switch input { display: none; }
+  .switch i { width: 34px; height: 20px; border-radius: 20px; background: #2a3042; position: relative; transition: background .2s; flex: none; }
+  .switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .2s; }
+  .switch input:checked + i { background: var(--accent); }
+  .switch input:checked + i::after { transform: translateX(14px); }
+
+  /* Timer */
+  .timer-display {
+    font: 700 72px/1 "JetBrains Mono", monospace; letter-spacing: -.02em; text-align: center;
+    padding: 18px 0 12px; font-variant-numeric: tabular-nums;
+  }
+  .timer-display.paused { color: var(--muted); }
+  .timer-display.done { color: var(--danger); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .progress { height: 6px; border-radius: 6px; background: #1d2230; overflow: hidden; margin-bottom: 16px; }
+  .progress > div { height: 100%; background: var(--accent); width: 100%; transition: background .3s; }
+  .timer-main { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .timer-main .btn { padding: 14px; font-size: 15px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+
+  /* Message */
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .quick .q { display: inline-flex; align-items: center; max-width: 100%; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); }
+  .quick .q button { background: none; border: 0; cursor: pointer; padding: 6px 10px; font-size: 12px; }
+  .quick .q .t { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .quick .q .x { color: var(--muted); padding-left: 0; }
+  .quick .q .x:hover { color: var(--danger); }
+
+  /* Position */
+  .pos { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 140px; aspect-ratio: 16/9; padding: 6px; border-radius: 10px; border: 1px solid var(--line); background: #0e1118; }
+  .pos button { border: 1px dashed #2f3547; border-radius: 6px; background: transparent; cursor: pointer; }
+  .pos button.active { background: var(--accent); border: 1px solid var(--accent); }
+
+  /* Preview */
+  .preview { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #000; }
+  .preview iframe { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; pointer-events: none; }
+
+  .hint { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+  kbd { font: 11px "JetBrains Mono", monospace; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel-2); }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0; padding: 10px 16px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); transition: .25s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateX(-50%); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Overlay <span>Control</span></h1>
+  <div class="status"><div class="dot" id="wsDot"></div><span id="wsText">Déconnecté</span></div>
+  <div class="status" id="overlayCount">0 overlay connecté</div>
+  <div class="spacer"></div>
+  <div class="url"><code id="overlayUrl"></code><button class="btn sm" id="copyUrl">Copier l'URL OBS</button></div>
+</header>
+
+<main>
+  <div class="col">
+    <!-- MODE -->
+    <section>
+      <h2>Mode de travail</h2>
+      <div class="modes">
+        <button class="mode-btn" data-mode="focus" style="--c: var(--c-focus)"><span class="k">1</span><span class="name" data-label="focus">FOCUS TIME</span></button>
+        <button class="mode-btn" data-mode="help" style="--c: var(--c-help)"><span class="k">2</span><span class="name" data-label="help">HELP THE CREW</span></button>
+        <button class="mode-btn" data-mode="afk" style="--c: var(--c-afk)"><span class="k">3</span><span class="name" data-label="afk">AFK</span></button>
+        <button class="mode-btn" data-mode="open" style="--c: var(--c-open)"><span class="k">4</span><span class="name" data-label="open">OPEN TO DISCUSS</span></button>
+      </div>
+      <details class="edit">
+        <summary>Personnaliser les modes (libellé, sous-titre, couleur)</summary>
+        <div id="modeEdit"></div>
+        <p class="hint">Laisse la couleur sur « défaut » pour garder la palette du design.</p>
+      </details>
+    </section>
+
+    <!-- TIMER -->
+    <section>
+      <h2>Compte à rebours <span class="grow"></span>
+        <label class="switch"><input type="checkbox" data-vis="timer"><i></i>Visible</label>
+      </h2>
+      <div class="timer-display" id="timerDisplay">25:00</div>
+      <div class="progress"><div id="timerBar"></div></div>
+      <div class="timer-main">
+        <button class="btn primary" id="timerToggle">▶ Démarrer</button>
+        <button class="btn danger" id="timerReset">↺ Reset</button>
+      </div>
+      <div class="chips" id="presets"></div>
+      <div class="chips">
+        <button class="btn sm" data-add="-300">−5 min</button>
+        <button class="btn sm" data-add="-60">−1 min</button>
+        <button class="btn sm" data-add="60">+1 min</button>
+        <button class="btn sm" data-add="300">+5 min</button>
+        <button class="btn sm" data-add="600">+10 min</button>
+      </div>
+      <div class="grid2">
+        <label class="f">Durée personnalisée (mm, mm:ss ou h:mm:ss)
+          <div class="row" style="flex-wrap:nowrap">
+            <input type="text" id="customDuration" placeholder="ex. 40 ou 1:30:00">
+            <button class="btn" id="setDuration">Définir</button>
+          </div>
+        </label>
+        <label class="f">Libellé du timer
+          <input type="text" id="timerLabel" data-path="timer.label" placeholder="Session">
+        </label>
+      </div>
+      <p class="hint"><kbd>Espace</kbd> démarrer / pause · <kbd>R</kbd> reset · <kbd>1</kbd>–<kbd>4</kbd> changer de mode</p>
+    </section>
+
+    <!-- MESSAGE -->
+    <section>
+      <h2>Message à l'écran <span class="grow"></span>
+        <label class="switch"><input type="checkbox" data-vis="message"><i></i>Visible</label>
+      </h2>
+      <textarea id="msgInput" placeholder="Texte libre affiché sur l'overlay…"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" id="msgSend">Afficher</button>
+        <button class="btn" id="msgClear">Effacer</button>
+        <button class="btn" id="msgSave">☆ Enregistrer</button>
+        <span class="hint" style="margin:0"><kbd>Ctrl</kbd>+<kbd>Entrée</kbd> pour afficher</span>
+      </div>
+      <div class="quick" id="quickList"></div>
+    </section>
+  </div>
+
+  <div class="col">
+    <!-- PREVIEW -->
+    <section>
+      <h2>Aperçu en direct <span class="grow"></span>
+        <label class="switch"><input type="checkbox" data-vis="panel"><i></i>Overlay affiché</label>
+      </h2>
+      <div class="preview" id="preview"><iframe src="/overlay?preview=1" title="Aperçu overlay"></iframe></div>
+      <div class="row" style="margin-top:12px">
+        <label class="switch"><input type="checkbox" data-vis="mode"><i></i>Badge du mode</label>
+      </div>
+    </section>
+
+    <!-- STYLE -->
+    <section>
+      <h2>Style <span class="grow"></span><button class="btn sm" id="resetStyle">Réinitialiser</button></h2>
+      <div class="grid2">
+        <label class="f">Police titres / timer (Google Fonts)
+          <input type="text" list="fontList" data-path="style.fontDisplay" data-commit="change">
+        </label>
+        <label class="f">Police texte / message (Google Fonts)
+          <input type="text" list="fontList" data-path="style.fontBody" data-commit="change">
+        </label>
+        <label class="f">Graisse des titres
+          <select data-path="style.fontWeight" data-type="number">
+            <option value="300">300 · Light</option><option value="400">400 · Regular</option>
+            <option value="500">500 · Medium</option><option value="600">600 · Semibold</option>
+            <option value="700">700 · Bold</option><option value="800">800 · Extrabold</option>
+            <option value="900">900 · Black</option>
+          </select>
+        </label>
+        <label class="f">Couleur du texte
+          <div class="color"><input type="color" data-path="style.textColor"><input type="text" data-path="style.textColor" data-commit="change"></div>
+        </label>
+        <label class="f">Échelle du panneau : <b id="scaleVal">1.00×</b>
+          <input type="range" min="0.5" max="2" step="0.05" data-path="style.scale" data-type="number">
+        </label>
+        <label class="f">Taille du message : <b id="msgSizeVal">30 px</b>
+          <input type="range" min="14" max="96" step="1" data-path="style.messageSize" data-type="number">
+        </label>
+        <label class="f">Largeur du panneau mode/timer : <b id="pwVal">Auto</b>
+          <div class="row" style="flex-wrap:nowrap">
+            <input type="range" min="280" max="1400" step="10" data-path="style.panelWidth" data-type="number">
+            <button class="btn sm" data-auto="style.panelWidth">Auto</button>
+          </div>
+        </label>
+        <label class="f">Hauteur du panneau mode/timer : <b id="phVal">Auto</b>
+          <div class="row" style="flex-wrap:nowrap">
+            <input type="range" min="100" max="900" step="10" data-path="style.panelHeight" data-type="number">
+            <button class="btn sm" data-auto="style.panelHeight">Auto</button>
+          </div>
+        </label>
+      </div>
+      <p class="hint">En largeur fixe, les chiffres du timer rétrécissent si besoin pour tenir. « Auto » = taille selon le contenu.</p>
+      <div class="row" style="margin-top:16px; align-items:flex-start; gap:24px">
+        <div class="f" style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)">Position du panneau
+          <div class="pos" id="pos">
+            <button data-pos="top-left" title="Haut gauche"></button><button data-pos="top-right" title="Haut droite"></button>
+            <button data-pos="bottom-left" title="Bas gauche"></button><button data-pos="bottom-right" title="Bas droite"></button>
+          </div>
+        </div>
+        <label class="switch" style="margin-top:22px"><input type="checkbox" data-path="style.uppercase"><i></i>MAJUSCULES</label>
+      </div>
+      <datalist id="fontList"></datalist>
+    </section>
+
+    <section>
+      <h2>Intégration OBS</h2>
+      <p class="hint" style="margin-top:0">Source → <b>Navigateur</b> · URL <code id="obsUrl2"></code> · Largeur <b>1920</b> · Hauteur <b>1080</b>.
+        Pour séparer les éléments en plusieurs sources : ajoute <code>?only=timer</code>, <code>?only=mode</code> ou <code>?only=message</code>.</p>
+      <p class="hint">Stream Deck (action « Site web » en arrière-plan) : <code>/api/mode/focus</code>, <code>/api/timer/toggle</code>, <code>/api/timer/add?min=5</code>, <code>/api/message?text=…</code></p>
+    </section>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+
+  const FONTS = ['Orbitron', 'Rajdhani', 'Bebas Neue', 'Chakra Petch', 'Oxanium', 'Audiowide', 'Russo One', 'Teko',
+    'Exo 2', 'Space Grotesk', 'Unbounded', 'Syne', 'Archivo Black', 'Sora', 'Inter', 'Montserrat', 'Poppins',
+    'Outfit', 'Manrope', 'JetBrains Mono', 'Space Mono', 'IBM Plex Mono', 'Press Start 2P', 'VT323'];
+  const PRESETS = [5, 10, 15, 25, 30, 45, 60, 90];
+  const MODE_KEYS = ['focus', 'help', 'afk', 'open'];
+  const QUICK_KEY = 'overlay.quickMessages';
+
+  let state = null;
+  let offset = 0;
+  let ws = null;
+  let retry = 1000;
+
+  // ---------- WebSocket ----------
+  function connect() {
+    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+    ws.onopen = () => {
+      retry = 1000;
+      setConn(true);
+      ws.send(JSON.stringify({ type: 'hello', role: 'dashboard' }));
+    };
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'state') {
+        offset = msg.serverNow - Date.now();
+        state = msg.state;
+        render();
+      } else if (msg.type === 'clients') {
+        // chaque dashboard ouvert embarque un aperçu qui compte comme overlay
+        const obs = Math.max(0, msg.overlay - msg.dashboard);
+        $('#overlayCount').textContent = `${obs} overlay${obs > 1 ? 's' : ''} OBS connecté${obs > 1 ? 's' : ''}`;
+      }
+    };
+    ws.onclose = () => {
+      setConn(false);
+      setTimeout(connect, retry);
+      retry = Math.min(retry * 1.6, 5000);
+    };
+    ws.onerror = () => ws.close();
+  }
+  function setConn(on) {
+    $('#wsDot').classList.toggle('on', on);
+    $('#wsText').textContent = on ? 'Connecté' : 'Reconnexion…';
+  }
+  function send(msg) {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+    else toast('Serveur non connecté');
+  }
+  function patch(path, value) {
+    const obj = {};
+    const keys = path.split('.');
+    keys.reduce((o, k, i) => (o[k] = i === keys.length - 1 ? value : {}), obj);
+    send({ type: 'patch', patch: obj });
+  }
+  const get = (path) => path.split('.').reduce((o, k) => (o == null ? o : o[k]), state);
+
+  // ---------- Rendu ----------
+  function render() {
+    if (!state) return;
+    document.documentElement.style.setProperty('--accent', state.modes[state.mode].accent || `var(--c-${state.mode})`);
+
+    for (const btn of $$('.mode-btn')) {
+      const m = btn.dataset.mode;
+      btn.classList.toggle('active', m === state.mode);
+      if (state.modes[m].accent) btn.style.setProperty('--c', state.modes[m].accent);
+      else btn.style.setProperty('--c', `var(--c-${m})`);
+      $('.name', btn).textContent = state.modes[m].label || m;
+    }
+
+    // Champs liés à l'état (sauf celui en cours d'édition)
+    for (const el of $$('[data-path]')) {
+      if (el === document.activeElement) continue;
+      const v = get(el.dataset.path);
+      if (el.type === 'checkbox') el.checked = !!v;
+      else if (v != null) el.value = v;
+    }
+    for (const el of $$('[data-vis]')) el.checked = !!state.visibility[el.dataset.vis];
+    for (const el of $$('[data-accent]')) {
+      if (el === document.activeElement) continue;
+      const m = el.dataset.accent;
+      el.value = state.modes[m].accent || getComputedStyle(document.documentElement).getPropertyValue('--c-' + m).trim();
+    }
+
+    $('#scaleVal').textContent = Number(state.style.scale).toFixed(2) + '×';
+    $('#msgSizeVal').textContent = state.style.messageSize + ' px';
+    $('#pwVal').textContent = state.style.panelWidth ? state.style.panelWidth + ' px' : 'Auto';
+    $('#phVal').textContent = state.style.panelHeight ? state.style.panelHeight + ' px' : 'Auto';
+    $$('[data-auto]').forEach((b) => b.classList.toggle('primary', !get(b.dataset.auto)));
+    for (const b of $$('#pos button')) b.classList.toggle('active', b.dataset.pos === state.style.position);
+
+    if (document.activeElement !== $('#msgInput') && !$('#msgInput').dataset.dirty) $('#msgInput').value = state.message.text;
+    $('#timerToggle').textContent = state.timer.running ? '❚❚ Pause' : '▶ Démarrer';
+    tick();
+  }
+
+  function remaining() {
+    const t = state.timer;
+    return t.running ? Math.max(0, t.endsAt - (Date.now() + offset)) : Math.max(0, t.remainingMs);
+  }
+  function fmt(ms) {
+    const total = Math.ceil(ms / 1000);
+    const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+    const p = (n) => String(n).padStart(2, '0');
+    return h ? `${h}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`;
+  }
+  function tick() {
+    if (!state) return;
+    const r = remaining();
+    const d = $('#timerDisplay');
+    d.textContent = fmt(r);
+    d.classList.toggle('paused', !state.timer.running && r > 0);
+    d.classList.toggle('done', r <= 0);
+    $('#timerBar').style.width = (state.timer.durationMs ? (r / state.timer.durationMs) * 100 : 0) + '%';
+  }
+  setInterval(tick, 200);
+
+  // ---------- Construction UI ----------
+  $('#fontList').innerHTML = FONTS.map((f) => `<option value="${f}">`).join('');
+  $('#presets').innerHTML = PRESETS.map((m) => `<button class="btn sm" data-preset="${m}">${m} min</button>`).join('');
+  $('#modeEdit').innerHTML = MODE_KEYS.map((m) => `
+    <div class="mode-edit">
+      <span class="tag" style="color:var(--c-${m})">${m.toUpperCase()}</span>
+      <input type="text" data-path="modes.${m}.label" placeholder="Libellé">
+      <input type="text" data-path="modes.${m}.subtitle" placeholder="Sous-titre">
+      <div class="color">
+        <input type="color" data-accent="${m}" title="Couleur d'accent">
+        <button class="btn sm" data-accent-reset="${m}" title="Revenir à la couleur par défaut">défaut</button>
+      </div>
+    </div>`).join('');
+
+  const overlayUrl = location.origin + '/overlay';
+  $('#overlayUrl').textContent = overlayUrl;
+  $('#obsUrl2').textContent = overlayUrl;
+
+  // ---------- Événements ----------
+  $$('.mode-btn').forEach((b) => b.addEventListener('click', () => send({ type: 'mode', mode: b.dataset.mode })));
+
+  $('#timerToggle').onclick = () => send({ type: 'timer', action: 'toggle' });
+  $('#timerReset').onclick = () => send({ type: 'timer', action: 'reset' });
+  $('#presets').addEventListener('click', (e) => {
+    const m = e.target.dataset.preset;
+    if (m) send({ type: 'timer', action: 'set', ms: m * 60000 });
+  });
+  $$('[data-add]').forEach((b) => b.addEventListener('click', () => send({ type: 'timer', action: 'add', ms: b.dataset.add * 1000 })));
+
+  function parseDuration(str) {
+    str = str.trim();
+    if (!str) return 0;
+    const parts = str.split(':').map(Number);
+    if (parts.some((n) => !Number.isFinite(n) || n < 0)) return 0;
+    if (parts.length === 1) return parts[0] * 60000; // minutes
+    if (parts.length === 2) return (parts[0] * 60 + parts[1]) * 1000;
+    if (parts.length === 3) return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
+    return 0;
+  }
+  function setCustom() {
+    const ms = parseDuration($('#customDuration').value);
+    if (!ms) return toast('Durée invalide');
+    send({ type: 'timer', action: 'set', ms });
+    $('#customDuration').value = '';
+  }
+  $('#setDuration').onclick = setCustom;
+  $('#customDuration').addEventListener('keydown', (e) => e.key === 'Enter' && setCustom());
+
+  // Champs génériques data-path
+  for (const el of $$('[data-path]')) {
+    const evt = el.type === 'checkbox' || el.tagName === 'SELECT' || el.dataset.commit === 'change' ? 'change' : 'input';
+    el.addEventListener(evt, () => {
+      let v = el.type === 'checkbox' ? el.checked : el.value;
+      if (el.dataset.type === 'number') v = Number(v);
+      if (el.dataset.path === 'style.textColor' && !/^#[0-9a-f]{3,8}$/i.test(v)) return toast('Couleur hex invalide');
+      if (/^style\.font(Display|Body)$/.test(el.dataset.path) && !String(v).trim()) return;
+      patch(el.dataset.path, v);
+    });
+    if (el.dataset.commit === 'change') el.addEventListener('keydown', (e) => e.key === 'Enter' && el.blur());
+  }
+  for (const el of $$('[data-vis]')) el.addEventListener('change', () => patch('visibility.' + el.dataset.vis, el.checked));
+
+  $('#modeEdit').addEventListener('input', (e) => {
+    const m = e.target.dataset.accent;
+    if (m) patch(`modes.${m}.accent`, e.target.value);
+  });
+  $('#modeEdit').addEventListener('click', (e) => {
+    const m = e.target.dataset.accentReset;
+    if (m) patch(`modes.${m}.accent`, '');
+  });
+
+  $('#pos').addEventListener('click', (e) => e.target.dataset.pos && patch('style.position', e.target.dataset.pos));
+  $$('[data-auto]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); patch(b.dataset.auto, 0); }));
+  $('#resetStyle').onclick = () => send({ type: 'reset-style' });
+
+  // Message
+  const msgInput = $('#msgInput');
+  msgInput.addEventListener('input', () => (msgInput.dataset.dirty = '1'));
+  function sendMsg(text) {
+    send({ type: 'message', text });
+    delete msgInput.dataset.dirty;
+    if (text && !state.visibility.message) patch('visibility.message', true);
+  }
+  $('#msgSend').onclick = () => sendMsg(msgInput.value);
+  $('#msgClear').onclick = () => { msgInput.value = ''; sendMsg(''); };
+  msgInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendMsg(msgInput.value); }
+  });
+
+  // Messages enregistrés (local au navigateur)
+  function loadQuick() {
+    try { return JSON.parse(localStorage.getItem(QUICK_KEY)) || []; } catch { return []; }
+  }
+  function saveQuick(list) {
+    try { localStorage.setItem(QUICK_KEY, JSON.stringify(list)); } catch {}
+    renderQuick();
+  }
+  function renderQuick() {
+    const list = loadQuick();
+    $('#quickList').innerHTML = '';
+    list.forEach((text, i) => {
+      const q = document.createElement('span');
+      q.className = 'q';
+      const t = document.createElement('button');
+      t.className = 't'; t.textContent = text; t.title = text;
+      t.onclick = () => { msgInput.value = text; sendMsg(text); };
+      const x = document.createElement('button');
+      x.className = 'x'; x.textContent = '×'; x.title = 'Supprimer';
+      x.onclick = () => saveQuick(list.filter((_, j) => j !== i));
+      q.append(t, x);
+      $('#quickList').append(q);
+    });
+  }
+  $('#msgSave').onclick = () => {
+    const text = msgInput.value.trim();
+    if (!text) return;
+    const list = loadQuick().filter((t) => t !== text);
+    saveQuick([text, ...list].slice(0, 20));
+    toast('Message enregistré');
+  };
+  renderQuick();
+
+  // Raccourcis clavier (hors champs de saisie)
+  document.addEventListener('keydown', (e) => {
+    if (e.target.closest('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.code === 'Space') { e.preventDefault(); send({ type: 'timer', action: 'toggle' }); }
+    else if (e.key === 'r' || e.key === 'R') send({ type: 'timer', action: 'reset' });
+    else if (['1', '2', '3', '4'].includes(e.key)) send({ type: 'mode', mode: MODE_KEYS[e.key - 1] });
+  });
+
+  $('#copyUrl').onclick = async () => {
+    try { await navigator.clipboard.writeText(overlayUrl); toast('URL copiée'); } catch { toast(overlayUrl); }
+  };
+
+  // Aperçu : iframe 1920x1080 mise à l'échelle
+  const preview = $('#preview');
+  new ResizeObserver(() => {
+    preview.querySelector('iframe').style.transform = `scale(${preview.clientWidth / 1920})`;
+  }).observe(preview);
+
+  let toastTimer;
+  function toast(text) {
+    const t = $('#toast');
+    t.textContent = text;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  connect();
+})();
+</script>
+</body>
+</html>

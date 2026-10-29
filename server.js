@@ -1,0 +1,314 @@
+// Serveur de pilotage d'overlay OBS
+// - Sert le dashboard (/) et l'overlay (/overlay)
+// - WebSocket (/ws) : le dashboard envoie des commandes, tous les clients reçoivent l'état
+// - API HTTP simple (/api/...) pour Stream Deck / raccourcis
+
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { WebSocketServer } = require('ws');
+
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '127.0.0.1';
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const DATA_DIR = path.join(__dirname, 'data');
+const STATE_FILE = path.join(DATA_DIR, 'state.json');
+
+const MODES = ['focus', 'help', 'afk', 'open'];
+
+const DEFAULT_STATE = {
+  mode: 'focus',
+  modes: {
+    focus: { label: 'FOCUS TIME', subtitle: 'Deep work en cours', accent: '' },
+    help: { label: 'HELP THE CREW', subtitle: 'Posez vos questions dans le chat', accent: '' },
+    afk: { label: 'AFK', subtitle: 'Je reviens vite', accent: '' },
+    open: { label: 'OPEN TO DISCUSS', subtitle: 'On discute, lance un sujet dans le chat', accent: '' },
+  },
+  timer: { running: false, endsAt: null, remainingMs: 25 * 60000, durationMs: 25 * 60000, label: 'Session' },
+  message: { text: '' },
+  style: {
+    fontDisplay: 'Orbitron',
+    fontBody: 'Inter',
+    fontWeight: 700,
+    scale: 1,
+    messageSize: 30,
+    uppercase: true,
+    position: 'bottom-left',
+    textColor: '#ffffff',
+    panelWidth: 0, // px, 0 = automatique
+    panelHeight: 0, // px, 0 = automatique
+  },
+  visibility: { panel: true, mode: true, timer: true, message: true },
+};
+
+// ---------- État ----------
+
+function isObject(v) {
+  return v && typeof v === 'object' && !Array.isArray(v);
+}
+
+// Fusion récursive limitée aux clés connues du modèle (ignore tout le reste)
+function mergeKnown(target, patch, model) {
+  for (const key of Object.keys(patch || {})) {
+    if (!(key in model)) continue;
+    const val = patch[key];
+    if (isObject(model[key])) {
+      if (isObject(val)) mergeKnown(target[key], val, model[key]);
+    } else if (model[key] === null || typeof val === typeof model[key]) {
+      target[key] = val;
+    }
+  }
+  return target;
+}
+
+function loadState() {
+  const state = structuredClone(DEFAULT_STATE);
+  try {
+    mergeKnown(state, JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')), DEFAULT_STATE);
+  } catch {
+    // premier lancement ou fichier illisible : état par défaut
+  }
+  // Un timer qui tournait avant l'arrêt du serveur est repris s'il n'a pas expiré
+  if (state.timer.running && !(state.timer.endsAt > Date.now())) {
+    Object.assign(state.timer, { running: false, endsAt: null, remainingMs: 0 });
+  }
+  return state;
+}
+
+let state = loadState();
+let saveTimeout = null;
+
+function saveState() {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2), (err) => {
+      if (err) console.error('Sauvegarde impossible :', err.message);
+    });
+  }, 300);
+}
+
+function clampNumbers() {
+  const s = state.style;
+  s.scale = Math.min(2, Math.max(0.5, Number(s.scale) || 1));
+  s.messageSize = Math.min(120, Math.max(12, Math.round(Number(s.messageSize) || 30)));
+  s.fontWeight = Math.min(900, Math.max(100, Math.round((Number(s.fontWeight) || 700) / 100) * 100));
+  // 0 = auto, sinon borné
+  const dim = (v, min, max) => (Number(v) > 0 ? Math.min(max, Math.max(min, Math.round(Number(v)))) : 0);
+  s.panelWidth = dim(s.panelWidth, 280, 1800);
+  s.panelHeight = dim(s.panelHeight, 100, 1000);
+  if (!['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(s.position)) s.position = 'bottom-left';
+  if (!MODES.includes(state.mode)) state.mode = 'focus';
+}
+
+// ---------- Timer ----------
+
+function remainingNow() {
+  const t = state.timer;
+  return t.running ? Math.max(0, t.endsAt - Date.now()) : Math.max(0, t.remainingMs);
+}
+
+function timerAction(action, ms) {
+  const t = state.timer;
+  const now = Date.now();
+  ms = Number(ms) || 0;
+
+  switch (action) {
+    case 'start':
+      if (t.running) break;
+      if (t.remainingMs <= 0) t.remainingMs = t.durationMs;
+      t.endsAt = now + t.remainingMs;
+      t.running = true;
+      break;
+    case 'pause':
+      if (!t.running) break;
+      t.remainingMs = remainingNow();
+      t.endsAt = null;
+      t.running = false;
+      break;
+    case 'toggle':
+      return timerAction(t.running ? 'pause' : 'start');
+    case 'reset':
+      Object.assign(t, { running: false, endsAt: null, remainingMs: t.durationMs });
+      break;
+    case 'set': // définit une nouvelle durée (timer arrêté)
+      if (ms <= 0) return false;
+      Object.assign(t, { running: false, endsAt: null, durationMs: ms, remainingMs: ms });
+      break;
+    case 'add': {
+      // ajoute (ou retire si négatif) du temps sans interrompre le timer
+      const next = Math.max(0, remainingNow() + ms);
+      if (t.running) t.endsAt = now + next;
+      else t.remainingMs = next;
+      t.durationMs = Math.max(t.durationMs, next);
+      break;
+    }
+    default:
+      return false;
+  }
+  return true;
+}
+
+// Arrêt automatique à 0
+setInterval(() => {
+  const t = state.timer;
+  if (t.running && t.endsAt <= Date.now()) {
+    Object.assign(t, { running: false, endsAt: null, remainingMs: 0 });
+    commit();
+  }
+}, 200);
+
+// ---------- Diffusion ----------
+
+let wss;
+
+function snapshot() {
+  return JSON.stringify({ type: 'state', serverNow: Date.now(), state });
+}
+
+function broadcast(data) {
+  for (const client of wss.clients) {
+    if (client.readyState === 1) client.send(data);
+  }
+}
+
+function broadcastClients() {
+  const counts = { overlay: 0, dashboard: 0 };
+  for (const c of wss.clients) if (c.role in counts) counts[c.role]++;
+  broadcast(JSON.stringify({ type: 'clients', ...counts }));
+}
+
+function commit() {
+  clampNumbers();
+  saveState();
+  broadcast(snapshot());
+}
+
+// Applique une commande (venant du WebSocket ou de l'API HTTP). Renvoie true si l'état a changé.
+function applyCommand(cmd) {
+  if (!isObject(cmd)) return false;
+  switch (cmd.type) {
+    case 'patch':
+      mergeKnown(state, cmd.patch, DEFAULT_STATE);
+      return true;
+    case 'mode':
+      if (!MODES.includes(cmd.mode)) return false;
+      state.mode = cmd.mode;
+      return true;
+    case 'timer':
+      return timerAction(cmd.action, cmd.ms);
+    case 'message':
+      state.message.text = String(cmd.text ?? '');
+      return true;
+    case 'reset-style':
+      state.style = structuredClone(DEFAULT_STATE.style);
+      return true;
+    default:
+      return false;
+  }
+}
+
+// ---------- HTTP ----------
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.woff2': 'font/woff2',
+};
+
+const ROUTES = { '/': 'dashboard.html', '/dashboard': 'dashboard.html', '/overlay': 'overlay.html' };
+
+function sendJson(res, code, body) {
+  res.writeHead(code, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify(body));
+}
+
+function serveStatic(res, pathname) {
+  const file = path.normalize(path.join(PUBLIC_DIR, ROUTES[pathname] || pathname));
+  if (!file.startsWith(PUBLIC_DIR + path.sep)) return sendJson(res, 403, { error: 'forbidden' });
+  fs.readFile(file, (err, data) => {
+    if (err) return sendJson(res, 404, { error: 'not found' });
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    res.end(data);
+  });
+}
+
+// API GET pratique pour Stream Deck (action "Website" en arrière-plan) :
+//   /api/state
+//   /api/mode/focus | help | afk
+//   /api/timer/start | pause | toggle | reset
+//   /api/timer/set?min=25     /api/timer/add?min=5  (ou ?sec=30)
+//   /api/message?text=Hello   (text vide = efface)
+function handleApi(req, res, url) {
+  const parts = url.pathname.split('/').filter(Boolean); // ['api', ...]
+  if (parts[1] === 'state') return sendJson(res, 200, { serverNow: Date.now(), state });
+
+  let cmd = null;
+  if (parts[1] === 'mode') cmd = { type: 'mode', mode: parts[2] };
+  else if (parts[1] === 'timer') {
+    const min = Number(url.searchParams.get('min')) || 0;
+    const sec = Number(url.searchParams.get('sec')) || 0;
+    cmd = { type: 'timer', action: parts[2], ms: (min * 60 + sec) * 1000 };
+  } else if (parts[1] === 'message') cmd = { type: 'message', text: url.searchParams.get('text') || '' };
+
+  if (!cmd || !applyCommand(cmd)) return sendJson(res, 400, { error: 'commande invalide' });
+  commit();
+  sendJson(res, 200, { ok: true, state });
+}
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
+  if (req.method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+  serveStatic(res, url.pathname);
+});
+
+// ---------- WebSocket ----------
+
+wss = new WebSocketServer({ server, path: '/ws' });
+
+wss.on('connection', (ws) => {
+  ws.role = 'unknown';
+  ws.isAlive = true;
+  ws.on('pong', () => (ws.isAlive = true));
+  ws.send(snapshot());
+
+  ws.on('message', (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (msg.type === 'hello') {
+      ws.role = msg.role === 'overlay' ? 'overlay' : msg.role === 'dashboard' ? 'dashboard' : 'unknown';
+      broadcastClients();
+      return;
+    }
+    if (applyCommand(msg)) commit();
+  });
+
+  ws.on('close', broadcastClients);
+});
+
+// Détecte les connexions mortes (OBS fermé brutalement, etc.)
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (!ws.isAlive) {
+      ws.terminate();
+      continue;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  }
+}, 15000);
+
+server.listen(PORT, HOST, () => {
+  const base = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`;
+  console.log(`\n  Dashboard : ${base}/`);
+  console.log(`  Overlay   : ${base}/overlay   (Source Navigateur OBS, 1920x1080)\n`);
+});
